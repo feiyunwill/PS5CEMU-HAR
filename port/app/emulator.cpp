@@ -644,8 +644,12 @@ namespace ps5emu
 		// defaults over them
 		if (s_coreStarted)
 			GetConfigHandle().Save();
+		// the program the app was mounted from (ShadowMountPlus's record, which follows an install on
+		// a USB drive), else the usual install, else the one found running
 		std::error_code ec;
-		const std::string eboot = fs::exists(ps5paths::kMountedEboot, ec) ? ps5paths::kMountedEboot : ps5paths::Eboot();
+		const std::string source = ps5paths::MountSource();
+		const std::string eboot = !source.empty() ? source + "/eboot.bin" :
+			fs::exists(ps5paths::kMountedEboot, ec) ? ps5paths::kMountedEboot : ps5paths::Eboot();
 		const int result = sceSystemServiceLoadExec(eboot.c_str(), nullptr);
 		// it does not come back when it works; allow for one that returns before ending the process
 		if (result == 0)

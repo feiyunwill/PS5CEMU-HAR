@@ -321,7 +321,7 @@ namespace ps5launcher
 		constexpr const char* kLayouts[] = {"Top above bottom", "Top screen only", "Large top screen", "Side by side"};
 		constexpr const char* kTextureFilters[] = {"None", "Anime4K", "Bicubic", "ScaleForce", "xBRZ", "MMPX"};
 		constexpr const char* kUpscaleFilters[] = {"Linear", "Bicubic", "Bicubic Hermite", "Nearest neighbour"};
-		constexpr const char* kMusic[] = {"shop", "setup", "off"};
+		constexpr const char* kMusic[] = {"setup", "off"};
 
 		// Artic Base's page (the 3DS's side)
 		enum ArticRow
@@ -1682,8 +1682,8 @@ namespace ps5launcher
 				{
 					rows = {
 						{"volume", "Game volume", fmt::format("{}%", Volume()), "The games' sound.", "The games' sound. Left and Right change it by 10%."},
-						{"music", "Launcher music", m_settings.music == "shop" ? "Shop theme" : m_settings.music == "setup" ? "Setup theme" : "Off",
-							"The music under the menus.", "The launcher's own music, in the spirit of a console's shop and setup screens, or none."},
+						{"music", "Launcher music", m_settings.music == "setup" ? "Setup theme" : "Off",
+							"The music under the menus.", "The launcher's own music, in the spirit of a console's setup screen, or none."},
 						{"musicvolume", "Music volume", fmt::format("{}%", m_settings.musicVolume), "How loud the menus' music is.",
 							"How loud the launcher's music is. Left and Right change it by 10%."},
 						{"menusounds", "Menu sounds", onOff(m_settings.menuSounds), "The sounds of moving and choosing.",
@@ -1908,7 +1908,7 @@ namespace ps5launcher
 				else if (id == "music")
 				{
 					const int music = (int)(std::find(std::begin(kMusic), std::end(kMusic), m_settings.music) - std::begin(kMusic));
-					m_settings.music = kMusic[(music + step + 3) % 3];
+					m_settings.music = kMusic[(music + step + 2) % 2];
 				}
 				else if (id == "musicvolume" && slide)
 					m_settings.musicVolume = std::clamp(m_settings.musicVolume + step * 10, 0, 100);

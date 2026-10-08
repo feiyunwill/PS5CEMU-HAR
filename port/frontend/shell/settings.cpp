@@ -39,8 +39,8 @@ namespace ps5shell
 		constexpr const char* kLayouts[] = {"Top above bottom", "Top screen only", "Large top screen", "Side by side"};
 		constexpr const char* kTextureFilters[] = {"None", "Anime4K", "Bicubic", "ScaleForce", "xBRZ", "MMPX"};
 		constexpr const char* kUpscaleFilters[] = {"Linear", "Bicubic", "Bicubic Hermite", "Nearest neighbour"};
-		constexpr const char* kMusic[] = {"shop", "setup", "off"};
-		constexpr const char* kMusicNames[] = {"Shop theme", "Setup theme", "Off"};
+		constexpr const char* kMusic[] = {"setup", "off"};
+		constexpr const char* kMusicNames[] = {"Setup theme", "Off"};
 		constexpr int kHolds[] = {400, 600, 800, 1000, 1200, 1500};
 
 		std::vector<std::string> Options(std::initializer_list<const char*> list)
@@ -253,7 +253,7 @@ namespace ps5shell
 		{
 			const int music = (int)(std::find(std::begin(kMusic), std::end(kMusic), m_settings.music) - std::begin(kMusic));
 			choice("music", "Launcher music", Options(kMusicNames), music, "The music under the menus.",
-				"The launcher's own music, in the spirit of a console's shop and setup screens, or none.");
+				"The launcher's own music, in the spirit of a console's setup screen, or none.");
 			slider("musicvolume", "Music volume", m_settings.musicVolume, 100, "How loud the menus' music is.",
 				"How loud the launcher's music is. Left and Right change it by 10%.");
 			toggle("menusounds", "Menu sounds", m_settings.menuSounds, "The sounds of moving and choosing.",
@@ -495,7 +495,7 @@ namespace ps5shell
 				Toast("The classic launcher opens from the next start");
 		}
 		else if (id == "music")
-			m_settings.music = kMusic[std::clamp(index, 0, 2)];
+			m_settings.music = kMusic[std::clamp(index, 0, 1)];
 		else if (id == "holdms")
 			m_settings.ui.holdMs = kHolds[std::clamp(index, 0, 5)];
 		else if (id == "upscaling")

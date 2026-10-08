@@ -8,6 +8,7 @@
 #include "privilege.h"
 #include "kernel.h"
 #include "log.h"
+#include "../app/paths.h"
 
 #include "elevation.hpp" // ps5-native-app-boilerplate examples/sandbox-elevation
 #include "ps5platform/exec.h"
@@ -16,6 +17,7 @@
 #include <cstdio>
 #include <cstring>
 #include <csetjmp>
+#include <dirent.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/stat.h>
@@ -132,10 +134,19 @@ namespace ps5privilege
 			return result == 42;
 		}
 
+		// /data as the app needs it: a folder it can write and list. ShadowMountPlus 1.7 mounts /data
+		// into a sandboxed app so that files open and write but a listing (and lstat) is refused with
+		// EPERM: no game folder could be listed, so that is not access (#22)
 		bool CanReachData()
 		{
 			struct stat st{};
-			return stat("/data", &st) == 0 && S_ISDIR(st.st_mode) && access("/data", W_OK) == 0;
+			if (stat("/data", &st) != 0 || !S_ISDIR(st.st_mode) || access("/data", W_OK) != 0)
+				return false;
+			DIR* folder = opendir("/data");
+			if (!folder)
+				return false;
+			closedir(folder);
+			return true;
 		}
 	}
 
@@ -215,11 +226,8 @@ namespace ps5privilege
 			return;
 		// a HEN that opened /data but not the drives (games on USB on 13.x, #16): the bundled helper
 		// gives the whole filesystem, as when /data is out of reach. A jailbroken process has no
-		// /app0, so the helper is asked for where the app is.
-		std::string helper = "/app0/sandbox-elevator.elf";
-		struct stat info{};
-		if (stat(helper.c_str(), &info) != 0)
-			helper = "/data/homebrew/PPSA99360/sandbox-elevator.elf";
+		// /app0, so the helper is asked for where the app is (installed on a USB drive, say).
+		const std::string helper = ps5paths::AppDir() + "/sandbox-elevator.elf";
 		const auto status = elevation::request(elevation::Capability::filesystem, helper.c_str());
 		const bool reached = !Refused(refused);
 		ps5log::Line("[privilege] {} could not be read; elevation helper ({}): {}, {}", refused, helper, (int)status,

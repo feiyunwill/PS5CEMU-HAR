@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Sun, 4 Oct 2026 21:26:56 +0000
+Subject: [PATCH] PS5: cheat files and aes_keys.txt read with the standard
+ library
+
+GatewayCheat::LoadFile and GetKeysStream read their files through
+FileUtil::OpenFStream, a boost::iostreams stream on a dup() of an
+IOFile's descriptor. On the PS5 that crashed the app as a game started
+whenever the game had a cheat file, even an empty one (issue #20), and
+would have whenever aes_keys.txt was there. Both are read with an
+std::ifstream instead, as Citra read them before the Android changes.
+---
+ src/core/cheats/gateway_cheat.cpp | 10 +++++-----
+ src/core/hw/aes/key.cpp           |  6 ++++--
+ 2 files changed, 9 insertions(+), 7 deletions(-)
+
+diff --git a/src/core/cheats/gateway_cheat.cpp b/src/core/cheats/gateway_cheat.cpp
+index 6df617491..475e55d14 100644
+--- a/src/core/cheats/gateway_cheat.cpp
++++ b/src/core/cheats/gateway_cheat.cpp
+@@ -492,8 +492,9 @@ std::vector<std::shared_ptr<CheatBase>> GatewayCheat::LoadFile(const std::string
+         return cheats;
+     }
+ 
+-    boost::iostreams::stream<boost::iostreams::file_descriptor_source> file;
+-    FileUtil::OpenFStream<std::ios_base::in>(file, filepath);
++    // PS5: read with the standard library's stream, not boost's on a dup() of the file's descriptor
++    // (FileUtil::OpenFStream), which crashed the app as the game started
++    std::ifstream file(filepath, std::ios_base::in);
+     if (!file.is_open()) {
+         LOG_INFO(Core_Cheats, "GatewayCheat::LoadFile failed, file failed to open: {}", filepath);
+         return cheats;
+@@ -504,9 +505,8 @@ std::vector<std::shared_ptr<CheatBase>> GatewayCheat::LoadFile(const std::string
+     std::string name;
+     bool enabled = false;
+ 
+-    while (!file.eof()) {
+-        std::string line;
+-        std::getline(file, line);
++    std::string line;
++    while (std::getline(file, line)) {
+         line.erase(std::remove(line.begin(), line.end(), '\0'), line.end());
+         line = Common::StripSpaces(line); // remove spaces at front and end
+         if (line.length() >= 2 && line.front() == '[') {
+diff --git a/src/core/hw/aes/key.cpp b/src/core/hw/aes/key.cpp
+index b9d90eb89..2c7fe1341 100644
+--- a/src/core/hw/aes/key.cpp
++++ b/src/core/hw/aes/key.cpp
+@@ -3,6 +3,7 @@
+ // Refer to the license.txt file included.
+ 
+ #include <algorithm>
++#include <fstream>
+ #include <optional>
+ #include <sstream>
+ #include <boost/iostreams/device/file_descriptor.hpp>
+@@ -293,8 +294,9 @@ std::istringstream GetKeysStream() {
+     const std::string filepath = FileUtil::GetUserPath(FileUtil::UserPath::SysDataDir) + KEYS_FILE;
+     FileUtil::CreateFullPath(filepath); // Create path if not already created
+ 
+-    boost::iostreams::stream<boost::iostreams::file_descriptor_source> file;
+-    FileUtil::OpenFStream<std::ios_base::in>(file, filepath);
++    // PS5: read with the standard library's stream, not boost's on a dup() of the file's descriptor
++    // (FileUtil::OpenFStream), as the cheat files are (core/cheats/gateway_cheat.cpp)
++    std::ifstream file(filepath, std::ios_base::in | std::ios_base::binary);
+     std::istringstream ret;
+     if (file.is_open()) {
+         return std::istringstream(std::string(std::istreambuf_iterator<char>(file), {}));

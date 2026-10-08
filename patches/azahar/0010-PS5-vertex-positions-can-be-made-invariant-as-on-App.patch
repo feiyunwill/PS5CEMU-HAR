@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Tue, 6 Oct 2026 03:02:21 +0000
+Subject: [PATCH] PS5: vertex positions can be made invariant, as on Apple
+
+Pokemon X shows moving black stipples on its outlined models on the
+console (PS5CEMU-HAR #23), at any resolution. It is the artifact Azahar
+already fixes on Apple GPUs by declaring gl_Position invariant: where two
+passes compute the same position slightly differently, parts of a face
+fail the depth test. Citra took the qualifier off other platforms in
+2024 because it caused regressions in Pokemon on RADV, the driver the
+console runs, so here it is only on when the port asks
+(g_ps5InvariantPosition, set before the renderer starts): a console
+test decides. The generated source changes with it, so the disk shader
+cache compiles the shaders again rather than reusing the other kind.
+---
+ src/video_core/shader/generator/glsl_shader_gen.cpp | 10 ++++++++++
+ src/video_core/shader/generator/glsl_shader_gen.h   |  6 ++++++
+ 2 files changed, 16 insertions(+)
+
+diff --git a/src/video_core/shader/generator/glsl_shader_gen.cpp b/src/video_core/shader/generator/glsl_shader_gen.cpp
+index 6de5f96b9..3df6db06a 100644
+--- a/src/video_core/shader/generator/glsl_shader_gen.cpp
++++ b/src/video_core/shader/generator/glsl_shader_gen.cpp
+@@ -14,6 +14,10 @@ using VSOutputAttributes = Pica::RasterizerRegs::VSOutputAttributes;
+ 
+ namespace Pica::Shader::Generator::GLSL {
+ 
++#ifdef __PROSPERO__
++bool g_ps5InvariantPosition = false;
++#endif
++
+ constexpr std::string_view VSPicaUniformBlockDef = R"(
+ #ifdef VULKAN
+ layout (set = 0, binding = 0, std140) uniform vs_pica_data {
+@@ -77,6 +81,12 @@ static std::string GetVertexInterfaceDeclaration(bool is_output, bool use_clip_p
+         // too much variance and cause visual artifacting in games like Pokemon.
+ #ifdef __APPLE__
+         out += "    invariant vec4 gl_Position;\n";
++#elif defined(__PROSPERO__)
++        // PS5: when the port asks. Pokemon X shows moving black stipples on its outlined models
++        // on the console's RADV, the artifact this fixes on Apple: where two passes compute the
++        // same position slightly differently, parts of a face fail the depth test
++        out += g_ps5InvariantPosition ? "    invariant vec4 gl_Position;\n"
++                                      : "    vec4 gl_Position;\n";
+ #else
+         out += "    vec4 gl_Position;\n";
+ #endif
+diff --git a/src/video_core/shader/generator/glsl_shader_gen.h b/src/video_core/shader/generator/glsl_shader_gen.h
+index 911f25379..1d73a7e25 100644
+--- a/src/video_core/shader/generator/glsl_shader_gen.h
++++ b/src/video_core/shader/generator/glsl_shader_gen.h
+@@ -34,6 +34,12 @@ struct ExtraFixedGSConfig;
+ 
+ namespace Pica::Shader::Generator::GLSL {
+ 
++#ifdef __PROSPERO__
++/// PS5: gl_Position invariant in every vertex and geometry shader, as on Apple GPUs. Set by the
++/// port before the renderer starts; off by default, as on other platforms.
++extern bool g_ps5InvariantPosition;
++#endif
++
+ /**
+  * Generates the GLSL vertex shader program source code that accepts vertices from software shader
+  * and directly passes them to the fragment shader.

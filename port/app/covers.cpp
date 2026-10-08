@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-// PS5Cemu: game icons for the launcher (emulator.h, CoverPath).
+// PS5Cemu: game icons and boot screens for the launcher (emulator.h, CoverPath, BootScreenPath).
 //
-// The title is mounted and meta/iconTex.tga read as Cemu's game list does it
+// The title is mounted and meta/iconTex.tga (or meta/bootTvTex.tga, the 1280 x 720 picture the
+// Wii U shows on the TV while a game loads) read as Cemu's game list does it
 // (wxGameList::AsyncWorkerThread), so this file keeps Cemu's MPL-2.0 licence. The launcher
-// (frontend/ui_host.cpp) reads only uncompressed 32-bit top-down TGAs, while icons may be
+// (frontend/ui_host.cpp) reads only uncompressed 32-bit top-down TGAs, while these may be
 // run-length encoded or bottom-up, so each is rewritten once as a 32-bit top-down TGA.
 
 #include "emulator.h"
@@ -36,7 +37,7 @@ namespace ps5emu
 			const uint32_t bits = data[16];
 			const bool topDown = data[17] & 0x20;
 			if (colourMapType != 0 || (type != 2 && type != 10) || (bits != 24 && bits != 32) || !width || !height ||
-				width > 1024 || height > 1024)
+				width > 1280 || height > 1280)
 				return false;
 			const uint32_t bytesPerPixel = bits / 8;
 			size_t offset = 18 + idLength;
@@ -122,7 +123,9 @@ namespace ps5emu
 			return !ec;
 		}
 
-		std::optional<std::vector<uint8>> ReadIcon(uint64_t titleId)
+		// A file of the title's meta folder, name or name.gz (a homebrew .wuhb's), at most
+		// unpackedLimit bytes once unpacked
+		std::optional<std::vector<uint8>> ReadMeta(uint64_t titleId, const char* name, size_t unpackedLimit)
 		{
 			TitleInfo titleInfo;
 			if (!CafeTitleList::GetFirstByTitleId(titleId, titleInfo))
@@ -130,39 +133,55 @@ namespace ps5emu
 			const std::string mountPath = TitleInfo::GetUniqueTempMountingPath();
 			if (!titleInfo.Mount(mountPath, "", FSC_PRIORITY_BASE))
 				return std::nullopt;
-			auto data = fsc_extractFile((mountPath + "/meta/iconTex.tga").c_str());
+			const std::string file = mountPath + "/meta/" + name;
+			auto data = fsc_extractFile(file.c_str());
 			if (!data)
 			{
-				data = fsc_extractFile((mountPath + "/meta/iconTex.tga.gz").c_str());
+				data = fsc_extractFile((file + ".gz").c_str());
 				if (data)
-					data = zlibDecompress(*data, 70 * 1024);
+					data = zlibDecompress(*data, unpackedLimit);
 			}
 			titleInfo.Unmount(mountPath);
 			return data;
+		}
+
+		// covers/<subfolder>/<title ID>.tga from the title's meta/<name>, made once; empty when the
+		// title has none. Per process, a failed one is not retried.
+		std::string Converted(std::unordered_map<uint64_t, std::string>& known, uint64_t titleId, const fs::path& folder,
+			const char* name, size_t unpackedLimit, const char* what)
+		{
+			if (const auto it = known.find(titleId); it != known.end())
+				return it->second;
+			std::error_code ec;
+			const fs::path converted = folder / fmt::format("{:016x}.tga", titleId);
+			std::string result;
+			if (fs::exists(converted, ec))
+				result = _pathToUtf8(converted);
+			else if (const auto data = ReadMeta(titleId, name, unpackedLimit))
+			{
+				Image image;
+				fs::create_directories(folder, ec);
+				if (DecodeTga(*data, image) && WriteTga(converted, image))
+					result = _pathToUtf8(converted);
+				else
+					ps5log::Line("[covers] {:016x}: the {} could not be converted", titleId, what);
+			}
+			known.emplace(titleId, result);
+			return result;
 		}
 	}
 
 	std::string CoverPath(uint64_t titleId)
 	{
-		static std::unordered_map<uint64_t, std::string> s_known; // per process: a failed one is not retried
-		if (const auto it = s_known.find(titleId); it != s_known.end())
-			return it->second;
-		std::error_code ec;
-		const fs::path folder = ps5paths::kCovers;
-		const fs::path cover = folder / fmt::format("{:016x}.tga", titleId);
-		std::string result;
-		if (fs::exists(cover, ec))
-			result = _pathToUtf8(cover);
-		else if (const auto data = ReadIcon(titleId))
-		{
-			Image image;
-			fs::create_directories(folder, ec);
-			if (DecodeTga(*data, image) && WriteTga(cover, image))
-				result = _pathToUtf8(cover);
-			else
-				ps5log::Line("[covers] {:016x}: the icon could not be converted", titleId);
-		}
-		s_known.emplace(titleId, result);
-		return result;
+		static std::unordered_map<uint64_t, std::string> s_known;
+		return Converted(s_known, titleId, ps5paths::kCovers, "iconTex.tga", 70 * 1024, "icon");
+	}
+
+	std::string BootScreenPath(uint64_t titleId)
+	{
+		static std::unordered_map<uint64_t, std::string> s_known;
+		// 1280 x 720, 24 or 32 bits: under 3.7 MB unpacked
+		return Converted(s_known, titleId, fs::path(ps5paths::kCovers) / "boot", "bootTvTex.tga", 4 * 1024 * 1024,
+			"boot screen");
 	}
 }

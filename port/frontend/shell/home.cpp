@@ -23,7 +23,8 @@ namespace ps5shell
 
 	void Shell::WantBackdrop(Game* game)
 	{
-		const std::string path = game ? game->boxArt : std::string();
+		// the game's own picture: a Wii U game's boot screen once read, else its box art
+		const std::string path = game ? BackdropOf(*game) : std::string();
 		if (path == m_backdropWanted && (!game || game->entry.ambient[0] == m_wantedAmbient[0]))
 			return;
 		if (path != m_backdropWanted)

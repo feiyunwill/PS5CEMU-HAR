@@ -1,0 +1,74 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Tue, 6 Oct 2026 02:55:14 +0000
+Subject: [PATCH] PS5: graphic packs' replacement files listed without realpath
+
+A pack that replaces game files (a content/ or aoc/ folder) crashed the
+app every time its game started (#24): _iterateReplacedFiles took each
+file's path inside the pack with fs::relative, which resolves both paths
+with realpath(), and the PS5 refuses realpath to a title. The
+filesystem_error had no catch above it, so std::terminate (signal 6).
+
+Every entry the iterator gives lies under the folder it walks, so the
+relative path is taken lexically, as fs::relative would give on a PC for
+a pack without symlinks (and with one, the symlink's own place in the
+pack now counts, not its target's). The walk itself uses error codes:
+an entry it can't read is skipped with a log line instead of ending
+the process.
+---
+ src/Cafe/GraphicPack/GraphicPack2.cpp | 38 ++++++++++++++++++---------
+ 1 file changed, 26 insertions(+), 12 deletions(-)
+
+diff --git a/src/Cafe/GraphicPack/GraphicPack2.cpp b/src/Cafe/GraphicPack/GraphicPack2.cpp
+index 850fb6b..6aecabd 100644
+--- a/src/Cafe/GraphicPack/GraphicPack2.cpp
++++ b/src/Cafe/GraphicPack/GraphicPack2.cpp
+@@ -900,22 +900,36 @@ void GraphicPack2::_iterateReplacedFiles(const fs::path& currentPath, bool isAOC
+ {
+ 	uint64 currentTitleId = CafeSystem::GetForegroundTitleId();
+ 	uint64 aocTitleId = (currentTitleId & 0xFFFFFFFFull) | 0x0005000c00000000ull;
+-	for (auto& it : fs::recursive_directory_iterator(currentPath))
++	// error codes, not exceptions: nothing up the stack catches a filesystem_error, so one unreadable
++	// entry ended the whole process (std::terminate) while the game was starting
++	std::error_code ec;
++	for (fs::recursive_directory_iterator it(currentPath, ec), end; !ec && it != end; it.increment(ec))
+ 	{
+-		if (fs::is_regular_file(it))
++		std::error_code fileEc;
++		if (!it->is_regular_file(fileEc))
++			continue;
++		// lexically: every entry lies under currentPath. fs::relative resolves both paths with
++		// realpath(), which the PS5 refuses to a title, so every pack with a content/ or aoc/ folder
++		// crashed there (#24), and a symlinked file would have been mounted at its target's path
++		fs::path virtualMountPath = it->path().lexically_relative(currentPath);
++		if (isAOC)
+ 		{
+-			fs::path virtualMountPath = fs::relative(it.path(), currentPath);
+-			if (isAOC)
+-			{
+-				virtualMountPath = fs::path(fmt::format("/vol/aoc{:016x}/", aocTitleId)) / virtualMountPath;
+-			}
+-			else
+-			{
+-				virtualMountPath = fs::path(virtualMountBase) / virtualMountPath;
+-			}
+-			fscDeviceRedirect_add(virtualMountPath.generic_string(), it.file_size(), it.path().generic_string(), m_fs_priority);
++			virtualMountPath = fs::path(fmt::format("/vol/aoc{:016x}/", aocTitleId)) / virtualMountPath;
++		}
++		else
++		{
++			virtualMountPath = fs::path(virtualMountBase) / virtualMountPath;
++		}
++		uint64 fileSize = it->file_size(fileEc);
++		if (fileEc)
++		{
++			cemuLog_log(LogType::Force, "Graphic pack \"{}\": skipped {}: {}", GetNormalizedPathString(), _pathToUtf8(it->path()), fileEc.message());
++			continue;
+ 		}
++		fscDeviceRedirect_add(virtualMountPath.generic_string(), fileSize, it->path().generic_string(), m_fs_priority);
+ 	}
++	if (ec)
++		cemuLog_log(LogType::Force, "Graphic pack \"{}\": can't list {}: {}", GetNormalizedPathString(), _pathToUtf8(currentPath), ec.message());
+ }
+ 
+ void GraphicPack2::LoadReplacedFiles()

@@ -63,6 +63,8 @@ namespace ps5shell
 		std::string boxArt;		  // GameTDB's cover, when fetched
 		std::string icon;		  // the game's own icon, once looked for
 		bool iconLooked = false;
+		std::string bootScreen;	  // Wii U: its boot screen (bootTvTex), the backdrop, once looked for
+		bool bootScreenLooked = false;
 		const ps5compat::Report* report = nullptr;
 		ps5gameinfo::Info info;
 		bool known = false;		  // GameTDB knows it
@@ -150,6 +152,9 @@ namespace ps5shell
 		void MakeGame(Game& game, const ps5catalog::Entry& entry);
 		std::string IconOf(Game& game);
 		std::string CoverOf(Game& game); // box art, else the icon (looked for at most one a frame)
+		// The backdrop's picture (7.4): a Wii U game's boot screen (looked for at most one a frame,
+		// sharing the icons' budget: each mounts the game), else the box art
+		std::string BackdropOf(Game& game);
 		const ui::Picture& Cover(Game& game, bool blurred = false);
 		std::vector<int> RecentGames() const; // indices, newest first, at most 12
 		int FindGame(uint64_t titleId) const;
@@ -347,6 +352,12 @@ namespace ps5shell
 		ui::Spring m_libraryScroll;
 		std::string m_search;
 		uint64_t m_libraryFocusTitle = 0;
+
+		// each side keeps its focus across a switch (5.3): its Home and Library games, by title
+		struct SideFocus
+		{
+			uint64_t homeTitle = 0, libraryTitle = 0;
+		} m_sideFocus[2];
 
 		// the hub
 		int m_hubGame = -1;

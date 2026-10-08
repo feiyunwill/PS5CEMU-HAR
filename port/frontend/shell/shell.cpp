@@ -438,10 +438,26 @@ namespace ps5shell
 	void Shell::SwitchSide()
 	{
 		m_feedback.Play(ui::Cue::Select);
+		// where the side being left was, for coming back to it
+		SideFocus& leaving = m_sideFocus[Is3ds() ? 1 : 0];
+		leaving.homeTitle = HomeGame() >= 0 ? m_games[HomeGame()].entry.game.titleId : 0;
+		leaving.libraryTitle = LibraryGame() >= 0 ? m_games[LibraryGame()].entry.game.titleId : 0;
 		const System other = Is3ds() ? System::WiiU : System::N3ds;
 		const ScreenId tab = m_screen == ScreenId::Library ? ScreenId::Library : ScreenId::Home;
 		OpenSide(other, false);
+		// the other side as it was left: the same games in focus
+		const SideFocus& back = m_sideFocus[Is3ds() ? 1 : 0];
+		for (int i = 0; i < (int)m_homeGames.size(); i++)
+			if (back.homeTitle && m_games[m_homeGames[i]].entry.game.titleId == back.homeTitle)
+				m_homeIndex = i;
+		m_libraryIndex = -1; // no game in focus, so the refresh finds the remembered one
+		m_libraryFocusTitle = back.libraryTitle;
+		LibraryRefresh();
 		ShowTab(tab);
+		// the focus on the side's games: left on the bar's switch, nothing on the screen had it, and
+		// Cross there switched straight back
+		m_onBar = false;
+		m_barFocus = tab == ScreenId::Library ? 2 : 1;
 	}
 
 	void Shell::MakeGame(Game& game, const ps5catalog::Entry& entry)
@@ -518,6 +534,17 @@ namespace ps5shell
 	std::string Shell::CoverOf(Game& game)
 	{
 		return !game.boxArt.empty() ? game.boxArt : IconOf(game);
+	}
+
+	std::string Shell::BackdropOf(Game& game)
+	{
+		if (!Is3ds() && !game.bootScreenLooked && !m_iconLookedThisFrame && m_status.coreReady)
+		{
+			game.bootScreenLooked = true;
+			m_iconLookedThisFrame = true;
+			game.bootScreen = ps5emu::BootScreenPath(game.entry.game.titleId);
+		}
+		return !game.bootScreen.empty() ? game.bootScreen : game.boxArt;
 	}
 
 	const ui::Picture& Shell::Cover(Game& game, bool blurred)
@@ -779,16 +806,27 @@ namespace ps5shell
 		const float y = kBarTop, h = kBarHeight;
 		const float appear = Enter(0);
 		canvas.PushAlpha(appear);
+		// each side's square with its console's glyph in it: the GamePad on blue, the 3DS on gold (the
+		// app's own tiles, tools/render-icons.py), plain colour until the picture has loaded
+		static const std::string kTiles[2] = {ps5paths::Assets() + "/ui/icons/ps5cemu-72.tga", ps5paths::Assets() + "/ui/icons/azahar-72.tga"};
+		auto tile = [&](int side, const Box& box, float radius, uint32_t tint) {
+			const ui::Picture& picture = m_images->Get(kTiles[side]);
+			if (picture.texture)
+				canvas.Image(picture.texture, box, radius, tint);
+			else
+				canvas.Rect(box, radius, ui::SetAlpha(side ? kN3ds : kWiiu, ((tint >> 24) & 0xff) / 255.0f));
+		};
 		// the mark: the two sides' squares
-		canvas.Rect({96, y + 8, 28, 28}, 8, kWiiu);
-		canvas.Rect({110, y + 22, 28, 28}, 8, ui::WithAlpha(kN3ds, 0.92f));
+		tile(0, {92, y + 4, 32, 32}, 8, 0xffffffff);
+		tile(1, {108, y + 20, 32, 32}, 8, 0xebffffff);
 		// the side switch
 		float x = 160;
 		const ui::TextStyle sideStyle = Style({22, ui::Weight::SemiBold, 1.0f});
 		const char* names[2] = {"Wii U", "3DS"};
+		constexpr float kTile = 34;
 		float widths[2];
 		for (int i = 0; i < 2; i++)
-			widths[i] = 20 + 12 + 10 + m_fonts.Width(sideStyle, names[i]) + 20;
+			widths[i] = 12 + kTile + 10 + m_fonts.Width(sideStyle, names[i]) + 20;
 		const Box pill{x, y, 8 + widths[0] + 4 + widths[1], h};
 		canvas.Rect(pill, h / 2, 0x0fffffff);
 		canvas.Ring(pill, h / 2, 1.5f, kGlassEdge);
@@ -800,9 +838,9 @@ namespace ps5shell
 			const Box segment{sx, y + 5, widths[i], h - 10};
 			if (on)
 				canvas.Rect(segment, segment.h / 2, ui::SetAlpha(colour, 0.24f));
-			canvas.Rect({sx + 20, segment.CentreY() - 6, 12, 12}, 4, on ? colour : ui::WithAlpha(Tertiary(), 0.8f));
+			tile(i, {sx + 12, segment.CentreY() - kTile / 2, kTile, kTile}, 9, on ? 0xffffffff : 0x73ffffff);
 			const ui::TextBlock text = m_fonts.Layout(sideStyle, names[i]);
-			canvas.Text(text, sx + 42, segment.CentreY() - text.height * 0.5f, on ? kText : Tertiary());
+			canvas.Text(text, sx + 12 + kTile + 10, segment.CentreY() - text.height * 0.5f, on ? kText : Tertiary());
 			if (m_onBar && m_barFocus == 0 && on)
 				Focus(segment, segment.h / 2);
 			sx += widths[i] + 4;

@@ -277,9 +277,17 @@ namespace ps5update
 			return sha.Hex();
 		}
 
-		// The folder the app runs from, which the update replaces the files of
+		// The folder the app runs from, which the update replaces the files of: the one ShadowMountPlus
+		// mounted it from (on a USB drive, say, with an older copy left in /data/homebrew), else the
+		// usual install folder, else where the app was found. Empty for an app mounted from an image.
 		fs::path AppFolder()
 		{
+			bool image = false;
+			const std::string source = ps5paths::MountSource(&image);
+			if (!source.empty())
+				return source;
+			if (image)
+				return {};
 			std::error_code ec;
 			return fs::exists(ps5paths::kMountedEboot, ec) ? fs::path(ps5paths::kInstallDir) : fs::path(ps5paths::AppDir());
 		}
@@ -447,6 +455,13 @@ namespace ps5update
 			// unpacked beside the app's folder (the same drive, so each file then moves into place)
 			Set(Status::State::Installing);
 			const fs::path app = AppFolder();
+			if (app.empty())
+			{
+				fs::remove(archive, ec);
+				Fail("PS5CEMU-HAR runs from an image, whose files can't be replaced: install the new release by hand");
+				return;
+			}
+			ps5log::Line("[update] installing in {}", app.string());
 			const fs::path staging = app.string() + ".update";
 			fs::remove_all(staging, ec);
 			std::vector<fs::path> files;
@@ -578,12 +593,14 @@ namespace ps5update
 		// nothing else on the network or writing, as RestartToLibrary does
 		ps5boxart::Stop();
 		ps5packs::Stop();
-		const int result = sceSystemServiceLoadExec(ps5paths::kMountedEboot, nullptr);
+		// the program just installed: where ShadowMountPlus mounted the app from, as AppFolder()
+		const std::string eboot = (AppFolder().empty() ? fs::path(ps5paths::kInstallDir) : AppFolder()).string() + "/eboot.bin";
+		const int result = sceSystemServiceLoadExec(eboot.c_str(), nullptr);
 		// it does not come back when it works; allow for one that returns before ending the process
 		if (result == 0)
 			for (int i = 0; i < 100; i++)
 				sceKernelUsleep(100000);
-		ps5log::Line("[update] LoadExec({}) returned {:#x}", ps5paths::kMountedEboot, (uint32_t)result);
+		ps5log::Line("[update] LoadExec({}) returned {:#x}", eboot, (uint32_t)result);
 	}
 
 	void Stop()

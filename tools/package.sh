@@ -165,5 +165,11 @@ PY
 if ((check)); then
     echo "LINK CHECK ONLY: built without RADV, this folder cannot run on a console." >"$app/NOT-AN-APP.txt"
 fi
+# Every file and folder readable, writable and runnable by all (0777): the console starts an app only
+# then (with any other mode it answers "Can't start the game or app", CE-107750-0), and that is how
+# files copied over to it arrive. The release ZIP keeps these modes, so a file manager that honours
+# them, rather than writing 0777 itself, now installs an app that starts (#22: every ZIP so far had
+# eboot.bin at 0644).
+chmod -R 0777 "$app"
 "$tool" self --inspect --file "$app/eboot.bin" >"$work/eboot-inspection.txt"
 echo "==> [package] $app ($(du -sh "$app" | cut -f1), eboot.bin $(stat -c %s "$app/eboot.bin") bytes)"

@@ -76,6 +76,10 @@ namespace ps5emu
 	// A game's icon (meta/iconTex.tga) as an uncompressed top-down TGA in /data/ps5cemu/covers,
 	// extracted on first use; empty when the game has none or it cannot be read.
 	std::string CoverPath(uint64_t titleId);
+	// Its boot screen (meta/bootTvTex.tga, the 1280 x 720 picture the Wii U shows while it loads), the
+	// same way in /data/ps5cemu/covers/boot: the launcher's backdrop for it (docs/UI-REDESIGN.md 7.4).
+	// Mounts the title, so the launcher asks for one a frame at most.
+	std::string BootScreenPath(uint64_t titleId);
 
 	// The community graphic packs (graphic_packs.cpp): what Cemu's Graphic Packs window shows for
 	// one game, with its choices saved to settings.xml as that window saves them.

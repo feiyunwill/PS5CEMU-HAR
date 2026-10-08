@@ -191,7 +191,7 @@ namespace ps5sound
 		float LevelOf(const std::string& music, int volume)
 		{
 			const float setting = (float)std::clamp(volume, 0, 100) / 100.0f;
-			return music == "shop" || music == "setup" ? setting * setting * kMusicHeadroom : 0.0f;
+			return music == "setup" ? setting * setting * kMusicHeadroom : 0.0f;
 		}
 
 		void RaisePriority()

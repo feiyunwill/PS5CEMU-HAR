@@ -25,7 +25,9 @@ namespace ui
 		constexpr size_t kKept = 96;		// textures kept before the least recently drawn go
 		constexpr int kUploadsPerFrame = 3; // decoded pictures handed to the GPU a frame
 		constexpr int kLargest = 1280;		// a side, larger pictures are shrunk to it
-		constexpr int kBlurred = 128;		// a backdrop's width, softened
+		constexpr int kBlurred = 320;		// a backdrop's width, softened: lightly (7.4), so a game's
+											// boot screen stays recognisable behind the menus
+		constexpr int kBlurRadius = 3;
 
 		// A picture shrunk by whole-pixel boxes to fit width x height
 		std::vector<uint8_t> Shrink(const uint8_t* rgba, int width, int height, int toWidth, int toHeight)
@@ -206,7 +208,7 @@ namespace ui
 		{
 			const int toWidth = std::min(width, kBlurred), toHeight = std::max(1, height * toWidth / width);
 			done.rgba = Shrink(pixels, width, height, toWidth, toHeight);
-			Blur(done.rgba, toWidth, toHeight, 2);
+			Blur(done.rgba, toWidth, toHeight, kBlurRadius);
 			done.width = toWidth;
 			done.height = toHeight;
 		}

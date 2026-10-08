@@ -27,7 +27,8 @@ namespace
 		return age == 1 ? fmt::format("{}/{}.prev{}", folder, stem, ext) : fmt::format("{}/{}.{}{}", folder, stem, age, ext);
 	}
 
-	// stderr as the title started: where its lines that are not the driver's still go
+	// stderr's descriptor, which keeps where the title's stderr went: lines that are not the driver's
+	// still go there
 	int s_stderr = -1;
 
 	bool IsDriverMessage(std::string_view line)
@@ -111,19 +112,27 @@ namespace ps5log
 	{
 		static std::once_flag s_once;
 		std::call_once(s_once, [] {
+			// The stream stderr is moved to the pipe, not descriptor 2: a title may not dup2 (the
+			// console ends the app at the call, 0xA002030A "illegal function call", seen on 13.60;
+			// PS5_PayloadSDK's ps5platform/klog.h moves the stream for the same reason). Everything
+			// written through stderr (the driver's fprintf) arrives; a raw write(2) to descriptor 2
+			// goes where it did.
 			int ends[2];
 			if (pipe(ends) != 0)
 				return;
-			s_stderr = dup(STDERR_FILENO);
 			// a writer never waits on the forwarding thread: with the pipe full, its line is lost
 			fcntl(ends[1], F_SETFL, fcntl(ends[1], F_GETFL) | O_NONBLOCK);
-			if (s_stderr < 0 || dup2(ends[1], STDERR_FILENO) < 0)
+			FILE* stream = fdopen(ends[1], "w");
+			if (!stream)
 			{
 				close(ends[0]);
 				close(ends[1]);
 				return;
 			}
-			close(ends[1]);
+			setvbuf(stream, nullptr, _IOLBF, 0);
+			std::fflush(stderr);
+			s_stderr = STDERR_FILENO;
+			stderr = stream;
 			std::thread(ForwardStderr, ends[0]).detach();
 		});
 	}

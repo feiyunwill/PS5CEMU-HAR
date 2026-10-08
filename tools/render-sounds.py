@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Make the launcher's sounds: its two pieces of music and its menu sounds, synthesised here.
+"""Make the launcher's sounds: its music and its menu sounds, synthesised here.
 
     render-sounds.py OUTPUT_DIR
 
-writes OUTPUT_DIR/music-shop.wav and music-setup.wav, loops of PS5CEMU-HAR's own music in the
-spirit of a Nintendo console's shop and setup screens (light jazz: a bossa nova, and a calm piece),
-written for the launcher and taken from no game; and move.wav, select.wav, back.wav, denied.wav and
-launch.wav, the menu's sounds. The music is IMA ADPCM in stereo at 48 kHz (a quarter of 16-bit
-PCM's size), and the menu sounds 16-bit PCM in mono at 48 kHz: what port/frontend/sound.cpp reads.
-Each piece ends where it starts, its last notes' ring carried over its beginning, so it loops
-without a seam.
+writes OUTPUT_DIR/music-setup.wav, a loop of PS5CEMU-HAR's own music in the spirit of a Nintendo
+console's setup screen (light, swinging jazz), written for the launcher and taken from no game; and
+move.wav, select.wav, back.wav, denied.wav and launch.wav, the menu's sounds. The music is IMA ADPCM
+in stereo at 48 kHz (a quarter of 16-bit PCM's size), and the menu sounds 16-bit PCM in mono at 48
+kHz: what port/frontend/sound.cpp reads. The piece ends where it starts, its last notes' ring
+carried over its beginning, so it loops without a seam.
 
 The files are in the repository (port/frontend/ui/sounds), so a build needs nothing from here; run
-this again only to change them. It needs NumPy and SciPy. Each run makes the same files (the
-playing's small unevenness is seeded).
+this again only to change them. It needs NumPy, and uses SciPy's filters when it is there (without
+it, the same filters' responses are applied in the frequency domain). Each run makes the same files
+(the playing's small unevenness is seeded).
 """
 
 import os
@@ -22,7 +22,11 @@ import struct
 import sys
 
 import numpy as np
-from scipy import signal
+
+try:
+    from scipy import signal
+except ImportError:
+    signal = None
 
 SR = 48000
 
@@ -48,6 +52,8 @@ _FILTERS = {}
 
 
 def bandpass(x, low=None, high=None, order=2):
+    if signal is None:
+        return _fft_bandpass(x, low, high, order)
     key = (low, high, order)
     if key not in _FILTERS:
         if low and high:
@@ -57,6 +63,34 @@ def bandpass(x, low=None, high=None, order=2):
         else:
             _FILTERS[key] = signal.butter(order, high, "lowpass", fs=SR, output="sos")
     return signal.sosfilt(_FILTERS[key], x)
+
+
+def _fft_size(n):
+    return 1 << max(1, int(n - 1).bit_length())
+
+
+def _fft_bandpass(x, low, high, order):
+    """a Butterworth filter's magnitude response, applied in the frequency domain (no SciPy)"""
+    x = np.asarray(x, dtype=float)
+    shape = x.shape
+    flat = x.reshape(-1, shape[-1])
+    size = _fft_size(shape[-1])
+    f = np.fft.rfftfreq(size, 1 / SR)
+    gain = np.ones_like(f)
+    if high:
+        gain /= np.sqrt(1 + (f / high) ** (2 * order))
+    if low:
+        gain /= np.sqrt(1 + (low / np.maximum(f, 1e-6)) ** (2 * order))
+    out = np.fft.irfft(np.fft.rfft(flat, size, axis=-1) * gain, size, axis=-1)[:, :shape[-1]]
+    return out.reshape(shape)
+
+
+def convolve(x, response):
+    """x convolved with response, as long as x"""
+    if signal is not None:
+        return signal.oaconvolve(x, response)[:len(x)]
+    size = _fft_size(len(x) + len(response) - 1)
+    return np.fft.irfft(np.fft.rfft(x, size) * np.fft.rfft(response, size), size)[:len(x)]
 
 
 class Band:
@@ -147,6 +181,21 @@ class Band:
         return bandpass(self.noise(len(t)), 1500, 7000) * rise(t, 0.04) * np.exp(-t / 0.09) * velocity
 
 
+    # a ride cymbal: its bell's inharmonic ring over a wash of noise
+    def ride(self, velocity, length=0.7):
+        t = seconds(length)
+        wash = bandpass(self.noise(len(t)), low=5000) * np.exp(-t / (length * 0.45))
+        ping = sum(level * np.sin(2 * np.pi * f * t) for f, level in ((3150, 0.25), (4720, 0.18), (6380, 0.12)))
+        return (0.7 * wash + ping * np.exp(-t / 0.18)) * rise(t, 0.0015) * velocity
+
+    # a snare played softly: its head's tone and the wires
+    def snare(self, velocity):
+        t = seconds(0.18)
+        wires = bandpass(self.noise(len(t)), 1800, 7000) * np.exp(-t / 0.045)
+        head = np.sin(2 * np.pi * 190 * t) * np.exp(-t / 0.03)
+        return (0.8 * wires + 0.5 * head) * rise(t, 0.001) * velocity
+
+
 class Piece:
     """A piece being played: a mono bus for each part, the notes added where they fall."""
 
@@ -199,7 +248,7 @@ def reverberate(x, reverb_time, band):
         response = bandpass(response, high=5500)
         response[:int(0.015 * SR)] = 0
         response /= np.sqrt(np.sum(response ** 2))
-        out[channel] = signal.oaconvolve(x[channel], response)[:x.shape[1]]
+        out[channel] = convolve(x[channel], response)
     return out
 
 
@@ -214,120 +263,110 @@ def master(stereo, loudness_db):
 
 # -- the music ------------------------------------------------------------------------------------
 
-def bossa_part(piece, chords, bar, lead=None, lead_bus="vibes"):
-    """a bar of the bossa nova: the piano's comping, the bass, the drums, and a melody's notes"""
+SWING = 0.62  # where a swung off-beat eighth falls in its beat (straight would be 0.5)
+
+
+def swung(beat):
+    """a position in beats, its off-beat eighths swung"""
+    whole = float(np.floor(beat))
+    return whole + SWING if abs(beat - whole - 0.5) < 1e-6 else beat
+
+
+def halves_of(chords, bar):
+    chord = chords[bar % len(chords)]
+    return chord if isinstance(chord, list) else [chord, chord]
+
+
+def bass_near(pitch, near, low=36, high=52):
+    """pitch's note in the bass's range nearest to near"""
+    options = [n for n in range(low, high + 1) if n % 12 == pitch % 12]
+    return min(options, key=lambda n: abs(n - near))
+
+
+def walking_bass(piece, chords, bar, previous):
+    """a bar of walking bass in quarters: the root, chord tones, and a half step into the next bar's
+    root. Returns the last note, so the next bar walks on from it."""
     band = piece.band
-    halves = chords[bar] if isinstance(chords[bar], list) else [chords[bar], chords[bar]]
-    following = chords[(bar + 1) % len(chords)]
-    following = following[0] if isinstance(following, list) else following
-    start = bar * 4
-
-    def chord_at(beat):
-        return halves[0] if beat < 2 else halves[1]
-
-    # the piano: the clave's rhythm across two bars
-    for beat, length in ((0, 1.4), (1.5, 0.4), (3.0, 0.9)) if bar % 2 == 0 else ((1.0, 0.4), (2.0, 1.4)):
-        velocity = piece.velocity(0.55)
-        for i, note in enumerate(chord_at(beat)[1]):
-            piece.add("piano", start + beat + i * 0.012, band.epiano(hz(note), length * piece.beat, velocity * (0.85 + 0.05 * i)))
-    # the bass: root, fifth, the next root ahead of its bar
-    first, second = halves[0][0], halves[1][0]
-    fifth = (lambda root: root + 7 if root + 7 <= 52 else root - 5)
-    for beat, length, note in ((0, 1.5, first), (1.5, 0.5, fifth(first)),
-                               (2, 1.5, second if halves[0] is not halves[1] else fifth(first)),
-                               (3.5, 0.5, following[0])):
-        piece.add("bass", start + beat, band.bass(hz(note), length * piece.beat, piece.velocity(0.8)))
-    # the drums: a shaker's sixteenths, the rim on the clave, a soft kick
-    for sixteenth in range(16):
-        piece.add("shaker", start + sixteenth / 4, band.shaker(piece.velocity((0.9, 0.35, 0.6, 0.35)[sixteenth % 4])))
-    for beat in (0, 1.5, 3.0) if bar % 2 == 0 else (1.0, 2.5):
-        piece.add("rim", start + beat, band.rim(piece.velocity(0.7)))
-    for beat, velocity in ((0, 0.8), (2, 0.6), (3.5, 0.35)):
-        piece.add("kick", start + beat, band.kick(piece.velocity(velocity)), steady=True)
-    for beat, length, note in lead or ():
-        instrument = band.vibes if lead_bus == "vibes" else band.flute
-        piece.add(lead_bus, start + beat, instrument(hz(note), length * piece.beat * 0.95, piece.velocity(0.75)))
-
-
-def shop():
-    """'Shop': a bossa nova in F, 116 beats a minute, 32 bars. The melody is the vibraphone's, then
-    the flute's."""
-    FMAJ9, GM9, C13 = (41, (57, 60, 64, 67)), (43, (58, 62, 65, 69)), (48, (58, 62, 64, 69))
-    AM7, D9, C7SUS, C7 = (45, (60, 64, 67)), (38, (54, 60, 64, 69)), (48, (58, 60, 65, 67)), (48, (58, 64, 67))
-    F9, BBMAJ9, BBM6 = (41, (57, 63, 67, 72)), (46, (62, 65, 69, 72)), (46, (61, 65, 67, 70))
-    DM9, ABDIM7 = (38, (60, 64, 65, 69)), (44, (59, 62, 65, 68))
-    chords = [FMAJ9, FMAJ9, GM9, C13, AM7, D9, GM9, [C7SUS, C7],
-              FMAJ9, F9, BBMAJ9, BBM6, AM7, D9, [GM9, C13], [FMAJ9, C7],
-              BBMAJ9, BBMAJ9, AM7, DM9, GM9, C13, FMAJ9, D9,
-              GM9, BBM6, AM7, ABDIM7, GM9, C13, FMAJ9, [C7SUS, C7]]
-    # (beat, length in beats, note) in each bar
-    vibes = [
-        [(1.0, 0.5, 81), (1.5, 0.5, 79), (2.0, 1.0, 76), (3.0, 0.5, 77), (3.5, 1.0, 81)],
-        [(0.5, 0.5, 79), (1.0, 1.5, 76), (3.0, 0.5, 72), (3.5, 0.5, 74)],
-        [(0.0, 1.0, 77), (1.0, 0.5, 81), (1.5, 0.5, 82), (2.0, 1.0, 86), (3.0, 0.5, 84), (3.5, 0.5, 81)],
-        [(0.0, 1.5, 81), (1.5, 0.5, 79), (2.0, 2.0, 76)],
-        [(1.0, 0.5, 76), (1.5, 0.5, 79), (2.0, 0.5, 84), (2.5, 1.0, 81), (3.5, 0.5, 79)],
-        [(0.0, 1.0, 78), (1.0, 0.5, 81), (1.5, 1.0, 84), (2.5, 0.5, 83), (3.0, 1.0, 81)],
-        [(0.0, 0.5, 82), (0.5, 0.5, 81), (1.0, 1.0, 77), (2.0, 0.5, 74), (2.5, 1.0, 77), (3.5, 0.5, 81)],
-        [(0.0, 1.5, 79), (2.0, 0.5, 76), (2.5, 0.5, 77), (3.0, 1.0, 79)],
-        [(1.0, 0.5, 81), (1.5, 0.5, 79), (2.0, 1.0, 76), (3.0, 0.5, 77), (3.5, 1.0, 84)],
-        [(0.5, 0.5, 81), (1.0, 1.0, 79), (2.0, 0.5, 81), (2.5, 0.5, 79), (3.0, 1.0, 75)],
-        [(0.0, 1.5, 74), (1.5, 0.5, 77), (2.0, 0.5, 81), (2.5, 0.5, 84), (3.0, 1.0, 81)],
-        [(0.0, 1.5, 85), (1.5, 0.5, 82), (2.0, 1.0, 79), (3.0, 1.0, 77)],
-        [(0.0, 1.0, 76), (1.0, 0.5, 79), (1.5, 1.5, 84), (3.0, 0.5, 81), (3.5, 0.5, 79)],
-        [(0.0, 1.0, 78), (1.0, 1.0, 76), (2.0, 0.5, 78), (2.5, 0.5, 81), (3.0, 1.0, 84)],
-        [(0.0, 1.0, 82), (1.0, 1.0, 81), (2.0, 1.0, 79), (3.0, 1.0, 76)],
-        [(0.0, 1.5, 77), (3.0, 0.5, 72), (3.5, 0.5, 74)],
-    ]
-    flute = [
-        [(0.0, 1.5, 86), (1.5, 0.5, 84), (2.0, 2.0, 81)],
-        [(0.5, 0.5, 77), (1.0, 0.5, 79), (1.5, 0.5, 81), (2.0, 1.0, 84), (3.0, 1.0, 86)],
-        [(0.0, 1.5, 84), (1.5, 0.5, 81), (2.0, 2.0, 79)],
-        [(0.0, 1.0, 77), (1.0, 0.5, 76), (1.5, 0.5, 77), (2.0, 1.0, 81), (3.0, 1.0, 84)],
-        [(0.0, 2.0, 82), (2.0, 0.5, 81), (2.5, 0.5, 79), (3.0, 1.0, 77)],
-        [(0.0, 1.0, 76), (1.0, 1.0, 79), (2.0, 2.0, 81)],
-        [(0.0, 3.0, 79), (3.0, 0.5, 81), (3.5, 0.5, 84)],
-        [(0.0, 1.5, 86), (1.5, 0.5, 84), (2.0, 2.0, 81)],
-        [(0.0, 1.0, 82), (1.0, 1.0, 86), (2.0, 1.0, 84), (3.0, 1.0, 81)],
-        [(0.0, 2.0, 85), (2.0, 1.0, 82), (3.0, 1.0, 79)],
-        [(0.0, 1.5, 84), (1.5, 0.5, 81), (2.0, 2.0, 76)],
-        [(0.0, 1.0, 77), (1.0, 1.0, 80), (2.0, 1.0, 83), (3.0, 1.0, 86)],
-        [(0.0, 1.5, 86), (1.5, 0.5, 84), (2.0, 1.0, 82), (3.0, 1.0, 81)],
-        [(0.0, 2.0, 79), (2.0, 0.5, 81), (2.5, 0.5, 82), (3.0, 1.0, 76)],
-        [(0.0, 3.0, 77)],
-        [],
-    ]
-    piece = Piece(116, len(chords), seed=116)
-    for bar in range(len(chords)):
-        if bar < 16:
-            bossa_part(piece, chords, bar, vibes[bar], "vibes")
+    halves = halves_of(chords, bar)
+    target = halves_of(chords, bar + 1)[0][0]
+    notes = []
+    near = previous
+    for beat in range(4):
+        root, voicing = halves[0] if beat < 2 else halves[1]
+        if beat == 0 or (beat == 2 and halves[0] is not halves[1]):
+            note = bass_near(root, near)
+        elif beat == 3:
+            goal = bass_near(target, near)
+            note = goal + (1 if goal + 1 <= 52 and (piece.rng.random() < 0.5 or goal - 1 < 36) else -1)
         else:
-            bossa_part(piece, chords, bar, flute[bar - 16], "flute")
-    # the vibraphone leads back into the start
-    for beat, length, note in ((3.0, 0.5, 82), (3.5, 0.5, 79)):
-        piece.add("vibes", 31 * 4 + beat, piece.band.vibes(hz(note), length * piece.beat, piece.velocity(0.6)))
-    return piece.mix({
-        # gain, pan, reverb send, auto-pan (depth, rate)
-        "piano": (0.13, 0.0, 0.25, (0.35, 2.8)),
-        "bass": (0.42, 0.0, 0.04, None),
-        "vibes": (0.24, 0.2, 0.35, (0.12, 5.5)),
-        "flute": (0.2, -0.15, 0.35, None),
-        "shaker": (0.05, 0.45, 0.12, None),
-        "rim": (0.06, -0.35, 0.15, None),
-        "kick": (0.22, 0.0, 0.0, None),
-    }, reverb_time=1.8, wet=0.55)
+            tones = [bass_near(n, near) for n in voicing if n % 12 != root % 12] + [bass_near(root + 7, near)]
+            tones = [n for n in tones if n != near] or tones
+            note = min(tones, key=lambda n: abs(abs(n - near) - 3) + piece.rng.uniform(0, 1.5))
+        notes.append(note)
+        near = note
+    for beat, note in enumerate(notes):
+        accent = 0.85 if beat in (0, 2) else 0.7
+        piece.add("bass", bar * 4 + beat, band.bass(hz(note), 0.93 * piece.beat, piece.velocity(accent)))
+    return notes[-1]
+
+
+def comp(piece, chords, bar, pattern, level, bus="piano"):
+    """the electric piano's chords on the pattern's swung beats; a hit on the last eighth takes the
+    next bar's chord early, as a swinging pianist anticipates it"""
+    band = piece.band
+    halves = halves_of(chords, bar)
+    following = halves_of(chords, bar + 1)[0]
+    for beat, length in pattern:
+        chord = following if beat >= 3.5 else (halves[0] if beat < 2 else halves[1])
+        velocity = piece.velocity(level)
+        for i, note in enumerate(chord[1]):
+            piece.add(bus, bar * 4 + swung(beat) + i * 0.012, band.epiano(hz(note), length * piece.beat, velocity * (0.85 + 0.05 * i)))
+
+
+def solo(piece, chords, bar, previous):
+    """a bar of the vibraphone's solo over the bridge: chord tones on the beats, steps of the scale
+    between them, the line turning at its edges. Returns the last note."""
+    rhythms = [
+        [(0.0, 0.5), (0.5, 0.5), (1.0, 1.0), (2.0, 0.5), (2.5, 0.5), (3.0, 1.0)],
+        [(0.5, 0.5), (1.0, 0.5), (1.5, 0.5), (2.0, 1.5), (3.5, 0.5)],
+        [(0.0, 1.5), (1.5, 0.5), (2.0, 0.5), (2.5, 0.5), (3.0, 0.5), (3.5, 0.5)],
+        [(0.0, 2.0), (2.5, 0.5), (3.0, 1.0)],
+    ]
+    scale = {2, 4, 6, 7, 9, 11, 1}  # D major
+    halves = halves_of(chords, bar)
+    note = previous
+    direction = 1 if previous < 81 else -1
+    for beat, length in rhythms[bar % len(rhythms)]:
+        voicing = (halves[0] if beat < 2 else halves[1])[1]
+        if beat == int(beat):
+            tones = [n for n in range(72, 90) if n % 12 in {v % 12 for v in voicing} and n != note]
+            note = min(tones, key=lambda n: abs(n - (note + 3 * direction)))
+        else:
+            step = note + direction
+            while step % 12 not in scale:
+                step += direction
+            note = step
+        if note >= 87 or note <= 73 or piece.rng.random() < 0.18:
+            direction = -direction
+        piece.add("vibes", bar * 4 + swung(beat), piece.band.vibes(hz(note), length * piece.beat * 0.9, piece.velocity(0.7)))
+    return note
 
 
 def setup():
-    """'Setup': a calm piece in D, 92 beats a minute, 32 bars: the chords and a kalimba's arpeggios,
-    then the flute's melody over them."""
+    """'Setup': a light, swinging piece in D, 100 beats a minute, 40 bars. The tune (16 bars) on the
+    vibraphone over the kalimba's arpeggios and brushes; again on the flute with the vibraphone an
+    octave under it, the bass walking and the ride swinging; then an 8-bar bridge, the vibraphone
+    improvising, and a fill back to the top."""
     DMAJ9, BM9, GMAJ9 = (38, (54, 57, 61, 64)), (47, (62, 66, 69, 73)), (43, (54, 57, 59, 62))
     A13SUS, A7, FSM9 = (45, (55, 59, 62, 66)), (45, (55, 61, 64)), (42, (57, 61, 64, 68))
     BM9B, EM9, A7SUS = (47, (57, 61, 62, 66)), (40, (55, 59, 62, 66)), (45, (55, 59, 62, 64))
     FSM7, D_F, GM6, D_A = (42, (57, 61, 64)), (42, (57, 62, 64, 66)), (43, (58, 62, 64)), (45, (54, 57, 61, 64))
+    B7B9, A13, E9 = (47, (57, 60, 63, 66)), (45, (55, 61, 66, 71)), (40, (56, 62, 66, 71))
     progression = [DMAJ9, BM9, GMAJ9, [A13SUS, A7], FSM9, BM9B, EM9, [A7SUS, A7],
                    GMAJ9, FSM7, EM9, D_F, GMAJ9, GM6, D_A, [A13SUS, A7]]
-    chords = progression * 2
+    bridge = [GMAJ9, [FSM7, B7B9], EM9, A13, D_F, [BM9, E9], EM9, [A7SUS, A7]]
+    chords = progression + progression + bridge
+    tune = len(progression)
     melody = [
         [(0.0, 1.5, 78), (1.5, 0.5, 76), (2.0, 1.0, 81), (3.0, 1.0, 85)],
         [(0.0, 2.0, 86), (2.0, 1.0, 85), (3.0, 1.0, 81)],
@@ -346,57 +385,97 @@ def setup():
         [(0.0, 3.0, 78)],
         [(2.0, 1.0, 76), (3.0, 1.0, 73)],
     ]
-    piece = Piece(92, len(chords), seed=92)
+    calm = [(0.0, 1.4), (2.5, 1.3)]
+    charleston = ([(0.0, 0.6), (1.5, 0.45), (3.0, 0.8)], [(1.0, 0.45), (2.5, 0.9), (3.5, 0.5)])
+    piece = Piece(100, len(chords), seed=100)
     band = piece.band
+    bass = 38
+    line = 81
     for bar in range(len(chords)):
-        halves = chords[bar] if isinstance(chords[bar], list) else [chords[bar], chords[bar]]
-        following = chords[(bar + 1) % len(chords)]
-        following = following[0] if isinstance(following, list) else following
+        halves = halves_of(chords, bar)
         start = bar * 4
-        second_pass = bar >= len(progression)
-        # the piano, softly on 1 and 3, the pad under it
-        for half, beat in ((0, 0), (1, 2)):
-            velocity = piece.velocity(0.42)
-            for i, note in enumerate(halves[half][1]):
-                piece.add("piano", start + beat + i * 0.018, band.epiano(hz(note), 1.9 * piece.beat, velocity))
-        for note in halves[0][1]:
-            piece.add("pad", start, band.pad(hz(note + 12), (2 if halves[0] is not halves[1] else 4) * piece.beat, 0.5), steady=True)
-        if halves[0] is not halves[1]:
-            for note in halves[1][1]:
-                piece.add("pad", start + 2, band.pad(hz(note + 12), 2 * piece.beat, 0.5), steady=True)
-        # the bass
-        first, second = halves[0][0], halves[1][0]
-        fifth = first + 7 if first + 7 <= 52 else first - 5
-        for beat, length, note in ((0, 1.9, first), (2, 1.4, second if halves[0] is not halves[1] else fifth), (3.5, 0.45, following[0])):
-            piece.add("bass", start + beat, band.bass(hz(note), length * piece.beat, piece.velocity(0.75)))
-        # the kalimba's arpeggio in eighths, left and right in turn
+        section = 0 if bar < tune else 1 if bar < 2 * tune else 2
+        # the piano: calm under the tune's first statement, then swinging
+        if section == 0:
+            comp(piece, chords, bar, calm, 0.42)
+        else:
+            comp(piece, chords, bar, charleston[bar % 2], 0.5 if section == 1 else 0.55)
+        # the pad, under the tune's first statement and the bridge
+        if section != 1:
+            for half, (beat, length) in enumerate(((0, 2), (2, 2)) if halves[0] is not halves[1] else ((0, 4),)):
+                for note in halves[half][1]:
+                    piece.add("pad", start + beat, band.pad(hz(note + 12), length * piece.beat, 0.5), steady=True)
+        # the bass: a two-feel first, walking after
+        if section == 0:
+            following = halves_of(chords, bar + 1)[0]
+            first, second = halves[0][0], halves[1][0]
+            fifth = first + 7 if first + 7 <= 52 else first - 5
+            for beat, length, note in ((0, 1.9, first), (2, 1.4, second if halves[0] is not halves[1] else fifth), (3.5, 0.45, following[0])):
+                piece.add("bass", start + swung(beat), band.bass(hz(note), length * piece.beat, piece.velocity(0.75)))
+            bass = following[0]
+        else:
+            bass = walking_bass(piece, chords, bar, bass)
+        # the kalimba's arpeggios, fading back as the band fills in
+        level = (0.45, 0.22, 0.28)[section]
         for eighth in range(8):
             voicing = sorted(n + 12 for n in halves[eighth // 4][1])
             tones = voicing + [voicing[0] + 12, voicing[1] + 12]
             note = tones[(0, 2, 1, 3, 2, 4, 3, 1)[eighth]]
-            velocity = piece.velocity((0.35 if second_pass else 0.5) * (1.0 if eighth % 2 == 0 else 0.75))
-            piece.add("bells-left" if eighth % 2 == 0 else "bells-right", start + eighth / 2, band.kalimba(hz(note), velocity))
-        # the drums: hats in eighths, brushes on 2 and 4, a soft kick
-        for eighth in range(8):
-            piece.add("hat", start + eighth / 2, band.hat(piece.velocity(0.5 if eighth % 2 == 0 else 0.3)))
-        for beat in (1, 3):
-            piece.add("brush", start + beat - 0.04, band.brush(piece.velocity(0.6)))
-        for beat, velocity in ((0, 0.7), (2.5, 0.4)):
-            piece.add("kick", start + beat, band.kick(piece.velocity(velocity)), steady=True)
-        if second_pass:
-            for beat, length, note in melody[bar - len(progression)]:
-                piece.add("flute", start + beat, band.flute(hz(note), length * piece.beat * 0.95, piece.velocity(0.75)))
+            velocity = piece.velocity(level * (1.0 if eighth % 2 == 0 else 0.75))
+            piece.add("bells-left" if eighth % 2 == 0 else "bells-right", start + swung(eighth / 2), band.kalimba(hz(note), velocity))
+        # the drums
+        if section == 0:
+            # brushes: the hat's swung pattern, the brush on 2 and 4, a soft kick
+            for beat, velocity in ((0, 0.5), (1, 0.45), (1.5, 0.3), (2, 0.5), (3, 0.45), (3.5, 0.3)):
+                piece.add("hat", start + swung(beat), band.hat(piece.velocity(velocity)))
+            for beat in (1, 3):
+                piece.add("brush", start + beat - 0.04, band.brush(piece.velocity(0.6)))
+            for beat, velocity in ((0, 0.65), (2.5, 0.35)):
+                piece.add("kick", start + swung(beat), band.kick(piece.velocity(velocity)), steady=True)
+        else:
+            # the ride's "ding, ding-a ding", the hat's foot on 2 and 4, the kick feathered, ghost notes
+            for beat, velocity in ((0, 0.7), (1, 0.75), (1.5, 0.45), (2, 0.7), (3, 0.75), (3.5, 0.45)):
+                piece.add("ride", start + swung(beat), band.ride(piece.velocity(velocity)))
+            for beat in (1, 3):
+                piece.add("hat", start + beat, band.hat(piece.velocity(0.4)))
+            for beat in range(4):
+                piece.add("kick", start + beat, band.kick(piece.velocity(0.22)), steady=True)
+            for beat in (1.5, 3.5):
+                if piece.rng.random() < 0.4:
+                    piece.add("snare", start + swung(beat), band.snare(piece.velocity(0.25)))
+            if bar in (tune, 2 * tune):
+                piece.add("ride", start, band.ride(piece.velocity(1.0), length=2.2))  # a crash into the section
+        # the fill back to the top: a snare triplet and the kick under its last note
+        if bar == len(chords) - 1:
+            for i, beat in enumerate((3.0, 3 + 1 / 3, 3 + 2 / 3)):
+                piece.add("snare", start + beat, band.snare(piece.velocity(0.45 + 0.15 * i)), steady=True)
+            piece.add("kick", start + 3 + 2 / 3, band.kick(piece.velocity(0.6)), steady=True)
+        # the tune: the vibraphone, then the flute with the vibraphone an octave under it; the solo
+        if section == 0:
+            for beat, length, note in melody[bar]:
+                piece.add("vibes", start + swung(beat), band.vibes(hz(note), length * piece.beat * 0.95, piece.velocity(0.7)))
+        elif section == 1:
+            for beat, length, note in melody[bar - tune]:
+                piece.add("flute", start + swung(beat), band.flute(hz(note), length * piece.beat * 0.95, piece.velocity(0.75)))
+                piece.add("vibes-low", start + swung(beat), band.vibes(hz(note - 12), length * piece.beat * 0.95, piece.velocity(0.5)))
+        else:
+            line = solo(piece, chords, bar, line)
     return piece.mix({
+        # gain, pan, reverb send, auto-pan (depth, rate)
         "piano": (0.12, 0.0, 0.3, (0.25, 1.6)),
-        "pad": (0.035, 0.0, 0.5, None),
+        "pad": (0.03, 0.0, 0.5, None),
         "bass": (0.4, 0.0, 0.04, None),
         "bells-left": (0.1, -0.5, 0.45, None),
         "bells-right": (0.1, 0.5, 0.45, None),
+        "vibes": (0.22, 0.2, 0.35, (0.12, 5.5)),
+        "vibes-low": (0.14, -0.2, 0.35, (0.1, 5.5)),
         "flute": (0.2, 0.1, 0.4, None),
         "hat": (0.035, 0.35, 0.1, None),
+        "ride": (0.05, 0.4, 0.15, None),
+        "snare": (0.06, -0.2, 0.2, None),
         "brush": (0.04, -0.25, 0.2, None),
         "kick": (0.2, 0.0, 0.0, None),
-    }, reverb_time=2.2, wet=0.6)
+    }, reverb_time=2.0, wet=0.55)
 
 
 # -- the menu's sounds ----------------------------------------------------------------------------
@@ -425,7 +504,7 @@ def room(x, band):
     response = band.noise(len(t)) * np.exp(-6.91 * t / 0.35)
     response = bandpass(response, high=6000)
     response /= np.sqrt(np.sum(response ** 2))
-    return x + 0.18 * signal.oaconvolve(x, response)[:len(x)]
+    return x + 0.18 * convolve(x, response)
 
 
 def effects():
@@ -550,10 +629,16 @@ def main():
     os.makedirs(folder, exist_ok=True)
     for name, sound in effects().items():
         write_pcm(os.path.join(folder, f"{name}.wav"), sound)
-    for name, piece in (("shop", shop), ("setup", setup)):
-        stereo = master(piece(), loudness_db=-20)
-        write_adpcm(os.path.join(folder, f"music-{name}.wav"), stereo)
-        print(f"music-{name}.wav: {stereo.shape[1] / SR:.1f} s, peak {20 * np.log10(np.max(np.abs(stereo))):.1f} dBFS")
+    stereo = master(setup(), loudness_db=-20)
+    write_adpcm(os.path.join(folder, "music-setup.wav"), stereo)
+    print(f"music-setup.wav: {stereo.shape[1] / SR:.1f} s, peak {20 * np.log10(np.max(np.abs(stereo))):.1f} dBFS")
+    if os.environ.get("PREVIEW"):
+        # the same, as 16-bit PCM, to listen to anywhere
+        data = to_pcm16(stereo).T.tobytes()
+        with open(os.environ["PREVIEW"], "wb") as f:
+            f.write(b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVE")
+            f.write(b"fmt " + struct.pack("<IHHIIHH", 16, 1, 2, SR, SR * 4, 4, 16))
+            f.write(b"data" + struct.pack("<I", len(data)) + data)
 
 
 if __name__ == "__main__":

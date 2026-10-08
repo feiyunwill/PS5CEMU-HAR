@@ -19,7 +19,7 @@ namespace ps5sound
 		Launch, // a game is starting
 	};
 
-	// The music as ps5cemu.json names it: "shop", "setup" or "off"; its volume in percent.
+	// The music as ps5cemu.json names it: "setup" or "off"; its volume in percent.
 	// Opens AudioOut and starts the music, fading in. Without AudioOut the launcher is silent.
 	void Start(const std::string& music, int volume, bool menuSounds);
 	// At once: another piece fades out and the new one in, a volume glides to its new level.

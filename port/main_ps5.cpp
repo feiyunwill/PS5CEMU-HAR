@@ -52,6 +52,32 @@ namespace
 		return fmt::format("{} ({:#010x})", version.text, version.version);
 	}
 
+	// A diagnostic for SYSTEM_ILLEGAL_FUNCTION_CALL (0xA002030A), which ends the app with no signal for
+	// a crash handler: every import as the console resolved it. With /data/ps5cemu/got-range.txt
+	// ("SELF GOT_START GOT_END", this build's ELF addresses of this function and of .got, in hex), the
+	// .got as loaded goes to logs/got.bin, to be read against the ELF's relocations: an import the
+	// console does not give the app points where the others it lacks do. Nothing without the file.
+	void DumpImports()
+	{
+		FILE* range = std::fopen("/data/ps5cemu/got-range.txt", "rb");
+		if (!range)
+			return;
+		char text[128] = {};
+		(void)!std::fread(text, 1, sizeof(text) - 1, range);
+		std::fclose(range);
+		char* at = text;
+		const uint64_t self = std::strtoull(at, &at, 16), start = std::strtoull(at, &at, 16), end = std::strtoull(at, &at, 16);
+		if (!self || end <= start || end - start > (1u << 20))
+			return;
+		const uintptr_t base = (uintptr_t)&DumpImports - (uintptr_t)self;
+		FILE* out = std::fopen("/data/ps5cemu/logs/got.bin", "wb");
+		if (!out)
+			return;
+		std::fwrite((const void*)(uintptr_t)(start + base), 1, (size_t)(end - start), out);
+		std::fclose(out);
+		ps5log::Line("[diag] imports: {} slots in logs/got.bin, the eboot {:#x} above its ELF", (end - start) / 8, base);
+	}
+
 	std::vector<std::string> Diagnostics(const ps5privilege::Result& privileges)
 	{
 		return {
@@ -108,6 +134,14 @@ int main(int argc, char* argv[])
 		ps5log::Open(ps5paths::kLogs);
 	ps5log::Line("[main] firmware {}", Firmware());
 	ps5log::Line("[main] {}", privileges.summary);
+	{
+		bool image = false;
+		const std::string source = ps5paths::MountSource(&image);
+		ps5log::Line("[main] app folder {}{}", ps5paths::AppDir(),
+			!source.empty() ? fmt::format(" (mounted from {})", source) : image ? " (mounted from an image)" : "");
+	}
+	if (privileges.filesystem)
+		DumpImports();
 	ps5crash::Install(); // Cemu's own replaces it, in a session Cemu runs in
 	{
 		// how the console starts the CPU's floating point: desktop systems keep denormals (0x1f80);
@@ -267,6 +301,9 @@ int main(int argc, char* argv[])
 
 		if (choice->system == ps5launcher::System::N3ds)
 		{
+			// VideoOut configured again once the new launcher's surface is gone, as before Cemu's below:
+			// Azahar's surface follows on the output the launcher presented on, at 59.94 Hz
+			SetHighFrameRate(false);
 			if (ps5azahar::LaunchGame(game, settings.n3ds, error))
 			{
 				ps5azahar::RunGame();

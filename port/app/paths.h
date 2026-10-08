@@ -18,6 +18,7 @@
 
 #pragma once
 
+#include <cstdio>
 #include <initializer_list>
 #include <string>
 #include <sys/stat.h>
@@ -27,6 +28,13 @@ namespace ps5paths
 	constexpr const char* kTitleId = "PPSA99360";
 	constexpr const char* kInstallDir = "/data/homebrew/PPSA99360";
 	constexpr const char* kMountedEboot = "/data/homebrew/PPSA99360/eboot.bin";
+	// where the PS5 mounts the app it runs, whatever ShadowMountPlus mounted it from (a folder on
+	// /data, an extended storage or USB drive, or an image)
+	constexpr const char* kSystemMount = "/system_ex/app/PPSA99360";
+	// ShadowMountPlus's record of that source: mount.lnk holds the folder's path, mount_img.lnk is
+	// there for an image
+	constexpr const char* kMountRecord = "/user/app/PPSA99360/mount.lnk";
+	constexpr const char* kImageMountRecord = "/user/app/PPSA99360/mount_img.lnk";
 
 // everything PS5CEMU-HAR writes: on the console /data/ps5cemu; the launcher's preview on a PC
 // (tools/preview-launcher.sh) gives a folder of its own
@@ -43,13 +51,15 @@ namespace ps5paths
 	constexpr const char* kCovers = PS5CEMU_DATA "/covers";
 
 	// The app's own folder. The sandbox mounts it as /app0, but a process the HEN has jailbroken
-	// sees the console's root, which has no /app0: there the app is read where it is installed, or
-	// where the sandbox mounts it from (as ProsperoEden's storage_paths.h finds its own). Decided on
-	// first use, which comes after ps5privilege::Acquire.
+	// sees the console's root, which has no /app0: there the app is read where the PS5 mounts it,
+	// which follows ShadowMountPlus wherever it found the app (an install on a USB drive with an older
+	// copy left in /data/homebrew included), else where it is usually installed, or where the sandbox
+	// mounts it from (as ProsperoEden's storage_paths.h finds its own). Decided on first use, which
+	// comes after ps5privilege::Acquire.
 	inline const std::string& AppDir()
 	{
 		static const std::string directory = [] {
-			for (const char* candidate : {"/app0", kInstallDir, "/mnt/sandbox/PPSA99360_000/app0"})
+			for (const char* candidate : {"/app0", kSystemMount, kInstallDir, "/mnt/sandbox/PPSA99360_000/app0"})
 			{
 				struct stat info{};
 				if (stat((std::string(candidate) + "/eboot.bin").c_str(), &info) == 0 && S_ISREG(info.st_mode))
@@ -58,6 +68,28 @@ namespace ps5paths
 			return std::string(kInstallDir);
 		}();
 		return directory;
+	}
+
+	// The folder ShadowMountPlus mounted the running app from, by its record (kMountRecord), when it
+	// holds the app; empty without one. image: whether the app was mounted from an image instead,
+	// whose files can't be replaced one by one.
+	inline std::string MountSource(bool* image = nullptr)
+	{
+		struct stat info{};
+		if (image)
+			*image = stat(kImageMountRecord, &info) == 0;
+		std::string path;
+		if (FILE* file = std::fopen(kMountRecord, "rb"))
+		{
+			char text[512] = {};
+			path.assign(text, std::fread(text, 1, sizeof(text) - 1, file));
+			std::fclose(file);
+		}
+		while (!path.empty() && (path.back() == '\n' || path.back() == '\r' || path.back() == ' ' || path.back() == '\0' || path.back() == '/'))
+			path.pop_back();
+		if (path.size() < 2 || path[0] != '/' || stat((path + "/eboot.bin").c_str(), &info) != 0 || !S_ISREG(info.st_mode))
+			return {};
+		return path;
 	}
 
 	inline std::string Eboot() { return AppDir() + "/eboot.bin"; }

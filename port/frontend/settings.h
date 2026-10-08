@@ -28,6 +28,10 @@ namespace ps5settings
 		bool customTextures = false;  // texture packs from azahar/load/textures/<title ID> (Azahar's custom_textures)
 		int border = 0;				  // artwork around the screens: 0 none, else ps5ingame3ds::kBorderNames' theme
 		int cpuClock = 100;			  // the emulated CPU's speed, percent of the 3DS's (Azahar's cpu_clock_percentage)
+		// only in ps5cemu.json: every 3DS vertex position computed invariantly (Azahar patch 0010), as
+		// Azahar does on Apple GPUs, for Pokemon X's moving black stipples (#23). Off, as on a PC,
+		// until a console has shown it fixes them, and what it costs
+		bool invariantPosition = false;
 		std::string articAddress;	  // the last Artic Base server's IPv4 address, a 3DS on the network
 		int gameCount = -1;			  // the library's games when last looked for (the start screen's); -1: never
 		std::map<std::string, std::string> buttons; // 3DS button: DualSense input, where not the default
@@ -80,9 +84,8 @@ namespace ps5settings
 		uint64_t lastGame = 0;		  // title ID
 		std::vector<uint64_t> recent; // newest first, at most four
 		N3ds n3ds;
-		// The launcher's own sound, on both sides (frontend/sound.h): its music ("shop", "setup" or
-		// "off") and the music's volume in percent, and the menu's sounds.
-		std::string music = "shop";
+		// The launcher's own sound, on both sides (frontend/sound.h): its music ("setup" or "off") and the music's volume in percent, and the menu's sounds.
+		std::string music = "setup";
 		int musicVolume = 50;
 		bool boxArt = true;			  // box art from GameTDB (Settings > Online and updates)
 		bool menuSounds = true;

@@ -74,6 +74,7 @@ namespace ps5settings
 			ReadInt(json, "deadzone", n3ds.deadzone, 0, 50);
 			ReadBool(json, "performance", n3ds.performance);
 			ReadInt(json, "cpuClock", n3ds.cpuClock, 25, 400);
+			ReadBool(json, "invariantPosition", n3ds.invariantPosition);
 			ReadInt(json, "region", n3ds.region, -1, 6);
 			ReadInt(json, "language", n3ds.language, -1, 11);
 			ReadBool(json, "customTextures", n3ds.customTextures);
@@ -108,6 +109,8 @@ namespace ps5settings
 			writer.Bool(n3ds.performance);
 			writer.Key("cpuClock");
 			writer.Int(n3ds.cpuClock);
+			writer.Key("invariantPosition");
+			writer.Bool(n3ds.invariantPosition);
 			writer.Key("region");
 			writer.Int(n3ds.region);
 			writer.Key("language");
@@ -165,7 +168,10 @@ namespace ps5settings
 		if (json.HasMember("n3ds") && json["n3ds"].IsObject())
 			ReadN3ds(json["n3ds"], settings.n3ds);
 		ReadString(json, "music", settings.music);
-		if (settings.music != "shop" && settings.music != "setup")
+		// the setup theme is the launcher's only music now: the shop theme's players get it
+		if (settings.music == "shop")
+			settings.music = "setup";
+		else if (settings.music != "setup")
 			settings.music = "off";
 		ReadInt(json, "musicVolume", settings.musicVolume, 0, 100);
 		ReadBool(json, "boxArt", settings.boxArt);
