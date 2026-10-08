@@ -49,6 +49,9 @@ namespace ps5ingame3ds
 		VkCommandBuffer commandBuffer;
 		uint32_t width, height;
 		bool insideRenderPass;
+		// which of Azahar's renderers (a loaded save state makes it again, device and all): a new
+		// device can have the old one's handle, so it is told apart by this
+		uint64_t generation;
 	};
 
 	// When the game starts: its name and title ID, and the settings it starts with.

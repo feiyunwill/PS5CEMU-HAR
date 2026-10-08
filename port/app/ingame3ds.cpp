@@ -73,6 +73,7 @@ namespace ps5ingame3ds
 		{
 			bool ready = false, failed = false;
 			VkDevice device = VK_NULL_HANDLE;
+			uint64_t generation = 0; // Azahar's renderer's (Target::generation)
 			VkRenderPass renderPass = VK_NULL_HANDLE;
 			uint32_t width = 0, height = 0; // the screen's pass's picture
 			ImGui_ImplVulkan_InitInfo info{};
@@ -102,6 +103,7 @@ namespace ps5ingame3ds
 		ps5menu::SideMenu s_side;
 		std::atomic<bool> s_menuFresh{false};
 		int s_stateSlot = 1;
+		std::string s_stateAction; // the last save or load asked for in this opening: its tile shows how it went
 
 		constexpr const char* kLayouts[] = {"Top above bottom", "Top screen only", "Large top screen", "Side by side"};
 		constexpr const char* kFilters[] = {"None", "Anime4K", "Bicubic", "ScaleForce", "xBRZ", "MMPX"};
@@ -249,6 +251,7 @@ namespace ps5ingame3ds
 			ImGui_ImplVulkan_Init(&info, target.renderPass);
 			g.info = info;
 			g.device = target.device;
+			g.generation = target.generation;
 			g.renderPass = target.renderPass;
 			g.width = target.width;
 			g.height = target.height;
@@ -468,14 +471,23 @@ namespace ps5ingame3ds
 		std::vector<ps5menu::Tile> Tiles(const Settings& settings)
 		{
 			bool empty;
+			std::string message;
 			{
 				std::lock_guard lock(s_mutex);
 				empty = s_stateSlot > (int)s_stateTimes.size() || s_stateTimes[s_stateSlot - 1].empty();
+				message = s_stateMessage;
 			}
 			std::vector<ps5menu::Tile> tiles{{"resume", "Resume", "resume"},
 				{"save", "Save state", "save", fmt::format("Slot {}", s_stateSlot)},
 				{"load", "Load state", "load", empty ? fmt::format("Slot {} empty", s_stateSlot) : fmt::format("Slot {}", s_stateSlot), !empty},
 				{"layout", "Screens", "screens", kLayouts[std::clamp(settings.layout, 0, 3)]}};
+			// how the last save or load went, on its tile (Made by another version, Saved slot 1...)
+			for (ps5menu::Tile& tile : tiles)
+				if (!message.empty() && tile.id == s_stateAction)
+				{
+					tile.caption = message;
+					tile.help = fmt::format("Slot {}: {}", s_stateSlot, message);
+				}
 			return tiles;
 		}
 
@@ -522,13 +534,20 @@ namespace ps5ingame3ds
 				changed = false;
 				std::lock_guard lock(s_mutex);
 				if (id == "slot")
+				{
 					s_stateSlot = (s_stateSlot - 1 + change + kStateSlots) % kStateSlots + 1;
+					s_stateAction.clear();
+				}
 				else if (id == "load" && (s_stateSlot > (int)s_stateTimes.size() || s_stateTimes[s_stateSlot - 1].empty()))
+				{
 					s_stateMessage = fmt::format("Slot {} is empty", s_stateSlot);
+					s_stateAction = id;
+				}
 				else if (id == "save" || id == "load")
 				{
 					// loading is held to here (side_menu.h)
 					s_stateRequest = id == "save" ? s_stateSlot : -s_stateSlot;
+					s_stateAction = id;
 					s_stateMessage = id == "save" ? "Saving..." : "Loading...";
 				}
 				else if (id == "amiibo" && !chosen && !s_amiibo.empty())
@@ -560,6 +579,7 @@ namespace ps5ingame3ds
 			{
 				// opened: on its first row, every category closed, the shortcut's buttons not counted
 				s_side.Reset();
+				s_stateAction.clear();
 			}
 			bool close = false;
 			const ps5menu::Action action = s_side.Update(MenuRows(settings), Tiles(settings), s_menuButtons, sceKernelGetProcessTime(), close);
@@ -898,7 +918,10 @@ namespace ps5ingame3ds
 		if (g.failed)
 			return;
 		const float scale = std::max(1.0f, target.height / 1080.0f);
-		if (g.ready && target.device != g.device)
+		// Azahar's renderer made again (a loaded save state): its device is new even when it has the
+		// old one's handle, as it often does (the menu then drew with the old device's objects, and
+		// the driver crashed)
+		if (g.ready && (target.generation != g.generation || target.device != g.device))
 		{
 			if (target.insideRenderPass)
 				return; // the pass before it starts over

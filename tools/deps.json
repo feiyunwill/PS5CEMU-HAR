@@ -104,7 +104,7 @@
     },
     {
       "name": "azahar",
-      "about": "Mihawk-99's PS5_Azahar: Azahar (3DS emulator, GPL-2.0-or-later) with PS5_Dynarmic, whose code cache is the console's executable memory. patches/azahar holds the port's changes (tools/azahar-patches.sh); tools/build-azahar.sh builds its core",
+      "about": "Mihawk-99's PS5_Azahar: Azahar (3DS emulator, GPL-2.0-or-later) with PS5_Dynarmic, whose code cache is the console's executable memory. patches/azahar holds the port's changes (tools/azahar-patches.sh); tools/build-azahar.sh builds its core. A new pin can change what a save state holds: then raise ps5_state_format in src/core/savestate.cpp (patch 0011), or earlier builds' states load into it",
       "kind": "git",
       "url": "https://github.com/mihawk-99/PS5_Azahar.git",
       "commit": "4aef900a1a903d0aa6ea86fdb1e18236fb0d5907",

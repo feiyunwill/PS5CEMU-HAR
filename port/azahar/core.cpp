@@ -208,7 +208,8 @@ namespace ps5azahar
 				char text[32] = "saved";
 				if (const std::tm* local = std::localtime(&time))
 					std::strftime(text, sizeof(text), "%b %d, %H:%M", local);
-				times[info.slot - 1] = info.status == Core::SaveStateInfo::ValidationStatus::OK ? text : "another version's";
+				// an earlier build's state of the same format loads too (Azahar patch 0011)
+				times[info.slot - 1] = info.status != Core::SaveStateInfo::ValidationStatus::BuildMismatch ? text : "another version's";
 			}
 			ps5ingame3ds::SetStateSlots(times);
 		}
@@ -567,7 +568,7 @@ namespace ps5azahar
 		{
 			ps5ingame3ds::Record({target.instance, target.physical_device, target.device, target.queue_family, target.queue,
 				target.render_pass, target.image_count, target.command_buffer, target.width, target.height,
-				target.inside_render_pass});
+				target.inside_render_pass, target.generation});
 		}
 
 		void Emulate()

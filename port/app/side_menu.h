@@ -48,6 +48,7 @@ namespace ps5menu
 		std::string icon;	 // menu_canvas.h's Icon
 		std::string caption; // small, under the label
 		bool hold = false;
+		std::string help; // under the list while it is focused (else its row's)
 	};
 
 	// What the player did this frame: a row chosen with Cross, or a setting changed with Left or Right
@@ -409,9 +410,10 @@ namespace ps5menu
 			else if (m_onTiles && !tiles.empty())
 			{
 				const Tile& tile = tiles[std::clamp(m_tile, 0, (int)tiles.size() - 1)];
+				help = tile.help;
 				for (const Row& row : rows)
 				{
-					if (row.id == tile.id)
+					if (row.id == tile.id && help.empty())
 						help = row.help;
 					for (const Row& child : row.rows)
 						if (child.id == tile.id && help.empty())

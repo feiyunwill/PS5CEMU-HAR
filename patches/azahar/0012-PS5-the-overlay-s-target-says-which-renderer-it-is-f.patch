@@ -1,0 +1,70 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Mon, 5 Oct 2026 05:22:38 +0000
+Subject: [PATCH] PS5: the overlay's target says which renderer it is from
+
+A loaded save state shuts the system down and starts it again, renderer
+and Vulkan device included. The port's in-game menu keeps Vulkan objects
+on the device (a descriptor pool, ImGui's pipeline and font) and starts
+them over when the device changes, which it told by the device's handle;
+but a new device is often made where the old one was freed, with the
+same handle, and then the menu drew with the old device's objects and
+the driver crashed (about one load in three, from the menu). Each
+renderer now has a number of its own, given in the overlay's target.
+---
+ src/video_core/renderer_vulkan/renderer_vulkan.cpp   | 5 +++++
+ src/video_core/renderer_vulkan/renderer_vulkan.h     | 2 ++
+ src/video_core/renderer_vulkan/vk_frontend_overlay.h | 4 ++++
+ 3 files changed, 11 insertions(+)
+
+diff --git a/src/video_core/renderer_vulkan/renderer_vulkan.cpp b/src/video_core/renderer_vulkan/renderer_vulkan.cpp
+index a1afa28b6..775f7b092 100644
+--- a/src/video_core/renderer_vulkan/renderer_vulkan.cpp
++++ b/src/video_core/renderer_vulkan/renderer_vulkan.cpp
+@@ -127,6 +127,10 @@ RendererVulkan::RendererVulkan(Core::System& system, Pica::PicaCore& pica_,
+                                          update_queue,
+                                          main_present_window.ImageCount()},
+       present_heap{instance, scheduler.GetMasterSemaphore(), PRESENT_BINDINGS, 32} {
++#ifdef __PROSPERO__
++    static std::atomic<u64> generations{0};
++    overlay_generation = ++generations;
++#endif
+     CompileShaders();
+     BuildLayouts();
+     BuildPipelines();
+@@ -213,6 +217,7 @@ void RendererVulkan::DrawFrontendOverlay(vk::CommandBuffer cmdbuf, vk::RenderPas
+         .width = width,
+         .height = height,
+         .inside_render_pass = inside_render_pass,
++        .generation = overlay_generation,
+     });
+ }
+ #endif
+diff --git a/src/video_core/renderer_vulkan/renderer_vulkan.h b/src/video_core/renderer_vulkan/renderer_vulkan.h
+index ef9e94496..111d71add 100644
+--- a/src/video_core/renderer_vulkan/renderer_vulkan.h
++++ b/src/video_core/renderer_vulkan/renderer_vulkan.h
+@@ -104,6 +104,8 @@ private:
+ #ifdef __PROSPERO__
+     void DrawFrontendOverlay(vk::CommandBuffer cmdbuf, vk::RenderPass renderpass, u32 width,
+                              u32 height, bool inside_render_pass);
++    /// This renderer's number among those the process made (FrontendOverlayTarget::generation)
++    u64 overlay_generation{};
+ #endif
+     void DrawBottomScreen(const Layout::FramebufferLayout& layout,
+                           const Common::Rectangle<u32>& bottom_screen);
+diff --git a/src/video_core/renderer_vulkan/vk_frontend_overlay.h b/src/video_core/renderer_vulkan/vk_frontend_overlay.h
+index e403dea67..eca692a93 100644
+--- a/src/video_core/renderer_vulkan/vk_frontend_overlay.h
++++ b/src/video_core/renderer_vulkan/vk_frontend_overlay.h
+@@ -26,6 +26,10 @@ struct FrontendOverlayTarget {
+     u32 width;
+     u32 height;
+     bool inside_render_pass;
++    /// Which renderer: a new one each time the renderer is made (a loaded save state makes the
++    /// system, device and all, again). A new device can have the old one's handle, so a frontend
++    /// tells them apart by this.
++    u64 generation;
+ };
+ using FrontendOverlay = void (*)(const FrontendOverlayTarget& target);
+ 

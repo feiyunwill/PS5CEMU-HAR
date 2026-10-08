@@ -1,0 +1,78 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Thu, 8 Oct 2026 05:16:14 +0000
+Subject: [PATCH] PS5: save states from the port's earlier builds load
+
+Every build of the port is untagged (BUILD_VERSION 0) and has a revision of
+its own, and a state saved to a slot left build_version empty, so every
+state an earlier build made was a BuildMismatch and would not load. What a
+state holds has not changed under any build: one Azahar tree, and no patch
+touches what is serialised. A state now names its format (PS5CEMU-HAR 1),
+and one from before that, made by an untagged build, counts as the first.
+States of the build's own format load as a RevisionMismatch, as upstream
+loads states between builds of one version.
+---
+ src/core/savestate.cpp | 33 +++++++++++++++++++++++++++++++++
+ 1 file changed, 33 insertions(+)
+
+diff --git a/src/core/savestate.cpp b/src/core/savestate.cpp
+index 16c3db6fd..f7ab1f888 100644
+--- a/src/core/savestate.cpp
++++ b/src/core/savestate.cpp
+@@ -38,6 +38,30 @@ static_assert(sizeof(CSTHeader) == 256, "CSTHeader should be 256 bytes");
+ 
+ constexpr std::array<u8, 4> header_magic_bytes{{'C', 'S', 'T', 0x1B}};
+ 
++#ifdef __PROSPERO__
++/// PS5CEMU-HAR: every build of the port is untagged (version "0") with a revision of its own, and a
++/// state saved to a slot left build_version empty, so the check below refused every state made by an
++/// earlier build. What a state holds is Azahar's own (the same tree under every build so far); the
++/// port's patches change none of it. So a state names its format, and a build loads any state of
++/// its own format. Raise the number when Azahar's pin moves or a patch changes what is serialised.
++constexpr char ps5_state_format[] = "PS5CEMU-HAR 1";
++static_assert(sizeof(ps5_state_format) <= sizeof(CSTHeader::build_version));
++
++/// The format a state was made in: the one it names, or for a state from before states named one,
++/// the first if an untagged build made it (its build name is its revision's short form), as every
++/// one of the port's builds before 3.5.0 was
++static std::string Ps5StateFormat(const std::string& revision, const std::string& build_name,
++                                  const std::string& build_version) {
++    if (!build_version.empty()) {
++        return build_version;
++    }
++    if (build_name.size() == 7 && revision.starts_with(build_name)) {
++        return "PS5CEMU-HAR 1";
++    }
++    return {};
++}
++#endif
++
+ static std::string GetSaveStatePath(u64 program_id, u64 movie_id, u32 slot) {
+     if (movie_id) {
+         return fmt::format("{}{:016X}.movie{:016X}.{:02d}.cst",
+@@ -74,9 +98,15 @@ static bool ValidateSaveState(const CSTHeader& header, SaveStateInfo& info, u64
+         info.build_name = build_name;
+         info.build_version = build_version;
+ 
++#ifdef __PROSPERO__
++        info.status = Ps5StateFormat(revision, build_name, build_version) == ps5_state_format
++                          ? SaveStateInfo::ValidationStatus::RevisionMismatch
++                          : SaveStateInfo::ValidationStatus::BuildMismatch;
++#else
+         info.status = Common::g_build_version == info.build_version
+                           ? SaveStateInfo::ValidationStatus::RevisionMismatch
+                           : SaveStateInfo::ValidationStatus::BuildMismatch;
++#endif
+     }
+     return true;
+ }
+@@ -186,6 +216,9 @@ void System::SaveState(u32 slot) const {
+     std::memset(header.build_name.data(), 0, sizeof(header.build_name));
+     std::memcpy(header.build_name.data(), build_fullname.c_str(),
+                 std::min(build_fullname.length(), sizeof(header.build_name) - 1));
++#ifdef __PROSPERO__
++    std::memcpy(header.build_version.data(), ps5_state_format, sizeof(ps5_state_format));
++#endif
+ 
+     if (file.WriteBytes(&header, sizeof(header)) != sizeof(header) ||
+         file.WriteBytes(buffer.data(), buffer.size()) != buffer.size()) {
