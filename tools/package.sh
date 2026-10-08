@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
 # Assembles the app folder from build/cemu/ps5cemu.elf, as PS5_Vulkan packages a RADV title
-# (tools/build-radv-title.sh) and ProsperoEden its own (tools/package-headless-native.sh):
+# (tools/build-radv-title.sh):
 #
 #   build/app/PPSA99360/              copied to /data/homebrew/PPSA99360 on the console
 #     eboot.bin                       the ELF, converted and fake-signed by ps5-native-tool
@@ -9,9 +9,8 @@
 #     sce_sys/pic0.dds, pic1.dds      its home screen background (selected, starting)
 #     sce_module/libc.prx             the boilerplate's clean-room runtime
 #     sandbox-elevator.elf            the boilerplate's /data helper, built for PPSA99360
-#     assets/ui/                      the launchers: the classic one's layouts, stylesheets (blue and
-#                                     gold), fonts, glyphs and icons, the new one's font
-#                                     (fonts/lexend.sdf), and both's sounds
+#     assets/ui/                      the launcher's font (fonts/lexend.sdf), the in-game menus'
+#                                     (fonts/Lexend-*.ttf), sounds and the two sides' tiles
 #     assets/compatibility.md         the compatibility list, for the game pages' status
 #     assets/cemu/                    Cemu's game profiles and the Wii U system fonts
 #     assets/graphicPacks/            the community graphic packs (installed on first start)
@@ -110,30 +109,15 @@ grep -q "\"$title\"" "$helper/payload/main.cpp" || { echo "the elevation helper'
 make -s -C "$helper/payload" PS5_PAYLOAD_SDK="$PS5_PAYLOAD_SDK" OUTPUT="$app/sandbox-elevator.elf"
 python3 -B "$boilerplate/tools/validate-elevation-helper.py" "$app/sandbox-elevator.elf" >/dev/null
 
-# The launcher: its layouts and stylesheet in Cemu's blue and Azahar's gold (tools/render-layout.py,
-# port/frontend/ui/har.rcss), its Lexend font and its music and menu sounds (tools/render-fonts.py,
-# render-sounds.py, committed), its glyphs (tools/render-glyphs.py) and PS5CEMU-HAR's icons. Its
-# backgrounds, the Homebrew Launchers' bubbles and waves, are drawn as it runs (port/frontend/
-# bubbles.h, wave.h).
+# The launcher (port/ui, docs/UI-REDESIGN.md): Lexend's four weights as one signed-distance atlas
+# (tools/render-sdf-font.sh, committed), three as TrueType for the in-game menus' ImGui
+# (tools/render-menu-fonts.py, committed) and their licence, the menu's sounds and the music
+# (tools/render-sounds.py, committed), and the two sides' tiles the bar shows (tools/render-icons.py)
 ui=$app/assets/ui
-python3 -B "$PS5CEMU_ROOT/tools/render-layout.py" "$ui"
 mkdir -p "$ui/fonts" "$ui/sounds" "$ui/icons"
-cp "$PS5CEMU_ROOT"/port/frontend/ui/fonts/*.fnt "$PS5CEMU_ROOT"/port/frontend/ui/fonts/*.tga "$PS5CEMU_ROOT"/port/frontend/ui/fonts/OFL.txt "$ui/fonts/"
-# the new launcher's (port/ui, docs/UI-REDESIGN.md): Lexend's four weights as one signed-distance
-# atlas (tools/render-sdf-font.sh, committed), under the same licence as the classic one's
-cp "$PS5CEMU_ROOT/port/ui/fonts/lexend.sdf" "$ui/fonts/"
+cp "$PS5CEMU_ROOT/port/ui/fonts/lexend.sdf" "$PS5CEMU_ROOT"/port/ui/fonts/Lexend-*.ttf "$PS5CEMU_ROOT/tools/fonts/OFL.txt" "$ui/fonts/"
 cp "$PS5CEMU_ROOT"/port/frontend/ui/sounds/*.wav "$ui/sounds/"
-python3 -B "$PS5CEMU_ROOT/tools/render-glyphs.py" "$ui/glyphs" >/dev/null
-cp "$work/icons/ui/icons/"*.tga "$ui/icons/"
-python3 - "$ui" <<'PY'
-import os, re, sys
-ui = sys.argv[1]
-for layout in ("start.rml", "main.rml", "azahar.rml"):
-    text = open(os.path.join(ui, layout)).read()
-    missing = [src for src in sorted(set(re.findall(r'(?:src|href)="([^"]+)"', text))) if not os.path.isfile(os.path.join(ui, src))]
-    if missing:
-        sys.exit(f"the launcher's {layout} names missing files: " + ", ".join(missing))
-PY
+cp "$work/icons/ui/icons/ps5cemu-72.tga" "$work/icons/ui/icons/azahar-72.tga" "$ui/icons/"
 
 # Cemu's read-only data: game profiles, and the Wii U's system fonts games draw text with.
 mkdir -p "$app/assets/cemu/resources"

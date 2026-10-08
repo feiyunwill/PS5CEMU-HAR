@@ -1,10 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 # PS5CEMU-HAR: the port's host code, added to Cemu's tree by its CEMU_PS5 option (src/CMakeLists.txt):
 # the console layer (ps5/), Cemu's start-up and graphic packs (app/), Azahar's side (azahar/), and
-# the launchers (frontend/): the new one (frontend/shell/), drawn on the GPU with the UI kit (ui/,
-# docs/UI-REDESIGN.md), and the classic one, which draws ProsperoEden's RmlUi layout in software
-# through SDL, as ProsperoEden does. Cemu's own platform classes (cemu/) are added to Cemu's targets
-# by the patch.
+# the launcher (frontend/shell/), drawn on the GPU with the UI kit (ui/, docs/UI-REDESIGN.md). Cemu's
+# own platform classes (cemu/) are added to Cemu's targets by the patch.
 
 # the release's version, from the Makefile's VERSION (the one place it is set: tools/package.sh
 # writes it into sce_sys/param.json too), read again when the Makefile changes
@@ -30,25 +28,15 @@ foreach(index RANGE ${PS5CEMU_DEPS_LAST})
 endforeach()
 set(PS5CEMU_ROOT "${CMAKE_CURRENT_LIST_DIR}/..")
 set(PS5CEMU_DEPS "${PS5CEMU_ROOT}/.deps")
-# ProsperoEden's bitmap font engine: the launcher's fonts are atlases (Lexend's, tools/render-fonts.py),
-# not TrueType
-set(PROSPEROEDEN_LAUNCHER "${PS5CEMU_DEPS}/ProsperoEden/headless/prosperoeden")
 # the boilerplate's sandbox elevation client (port/ps5/privilege.cpp)
 set(SANDBOX_ELEVATION "${PS5CEMU_DEPS}/ps5-native-app-boilerplate/examples/sandbox-elevation")
 
-foreach(input "${PROSPEROEDEN_LAUNCHER}/bitmap_font_engine.cpp" "${SANDBOX_ELEVATION}/src/elevation.cpp"
-		"${PS5CEMU_DEPS}/reshade/deps/stb/stb_image.h")
+foreach(input "${SANDBOX_ELEVATION}/src/elevation.cpp" "${PS5CEMU_DEPS}/reshade/deps/stb/stb_image.h")
 	if(NOT EXISTS "${input}")
 		message(FATAL_ERROR "${input} is missing: run make deps")
 	endif()
 endforeach()
 
-find_path(RMLUI_INCLUDE_DIR RmlUi/Core.h REQUIRED)
-find_library(RMLUI_LIBRARY rmlui REQUIRED)
-# SDL2 with its PS5 video driver, which puts the launcher's software-drawn frames on VideoOut, and
-# the libiconv pacbrew built it with
-find_library(SDL2_LIBRARY SDL2 REQUIRED)
-find_library(ICONV_LIBRARY iconv REQUIRED)
 find_library(FREETYPE_LIBRARY freetype REQUIRED)
 # the UI kit (ui/): FreeType for the glyphs Lexend lacks (ui/text.cpp), and stb's image loaders for
 # covers and backdrops (ui/images.cpp, compiled static to that file), ReShade's copy
@@ -98,9 +86,6 @@ add_library(CemuPS5 STATIC
 	azahar/library.h
 	frontend/actions.cpp
 	frontend/actions.h
-	frontend/bubbles.cpp
-	frontend/bubbles.h
-	frontend/launcher.cpp
 	frontend/launcher.h
 	frontend/settings.cpp
 	frontend/settings.h
@@ -117,10 +102,6 @@ add_library(CemuPS5 STATIC
 	frontend/shell/widgets.cpp
 	frontend/sound.cpp
 	frontend/sound.h
-	frontend/ui_host.cpp
-	frontend/ui_host.h
-	frontend/wave.cpp
-	frontend/wave.h
 	ps5/crash.cpp
 	ps5/crash.h
 	ps5/display.cpp
@@ -159,7 +140,6 @@ add_library(CemuPS5 STATIC
 	ui/tokens.h
 	ui/vkfn.cpp
 	ui/vkfn.h
-	"${PROSPEROEDEN_LAUNCHER}/bitmap_font_engine.cpp"
 	"${SANDBOX_ELEVATION}/src/elevation.cpp"
 )
 
@@ -175,8 +155,6 @@ set_source_files_properties(
 	azahar/library.cpp
 	azahar/unavailable.cpp
 	frontend/actions.cpp
-	frontend/bubbles.cpp
-	frontend/launcher.cpp
 	frontend/settings.cpp
 	frontend/shell/home.cpp
 	frontend/shell/host_ps5.cpp
@@ -188,8 +166,6 @@ set_source_files_properties(
 	frontend/shell/shell.cpp
 	frontend/shell/widgets.cpp
 	frontend/sound.cpp
-	frontend/ui_host.cpp
-	frontend/wave.cpp
 	ps5/display.cpp
 	ps5/log.cpp
 	ps5/notify.cpp
@@ -205,13 +181,8 @@ set_source_files_properties(
 	ui/qr.cpp
 	ui/text.cpp
 	ui/vkfn.cpp
-	"${PROSPEROEDEN_LAUNCHER}/bitmap_font_engine.cpp"
 	"${SANDBOX_ELEVATION}/src/elevation.cpp"
 	PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
-# third-party code, compiled as its authors do
-set_source_files_properties(
-	"${PROSPEROEDEN_LAUNCHER}/bitmap_font_engine.cpp"
-	PROPERTIES COMPILE_OPTIONS "-w")
 
 target_include_directories(CemuPS5 PUBLIC
 	"${CMAKE_CURRENT_LIST_DIR}"
@@ -219,15 +190,12 @@ target_include_directories(CemuPS5 PUBLIC
 	"${CMAKE_CURRENT_LIST_DIR}/cemu"
 )
 target_include_directories(CemuPS5 PRIVATE
-	"${PROSPEROEDEN_LAUNCHER}"
 	# the platform layer RADV is linked with: its heap's and executable memory's statistics
 	"${PS5CEMU_DEPS}/PS5_PayloadSDK/platform/include"
 	"${SANDBOX_ELEVATION}"
-	"${RMLUI_INCLUDE_DIR}"
 	"${FREETYPE_INCLUDE_DIR}"
 	"${STB_INCLUDE_DIR}"
 )
-target_compile_definitions(CemuPS5 PRIVATE RMLUI_STATIC_LIB)
 # the version the launcher and the boot log show (the app's param.json has it as 02.000.004)
 target_compile_definitions(CemuPS5 PUBLIC PS5CEMU_VERSION="${PS5CEMU_VERSION}"
 	PS5CEMU_CEMU_COMMIT="${PS5CEMU_CEMU_COMMIT}" PS5CEMU_AZAHAR_COMMIT="${PS5CEMU_AZAHAR_COMMIT}")
@@ -243,9 +211,6 @@ target_link_libraries(CemuPS5 PUBLIC
 	CemuResource
 	CemuUtil
 	imguiImpl
-	"${RMLUI_LIBRARY}"
-	"${SDL2_LIBRARY}"
-	"${ICONV_LIBRARY}"
 	"${FREETYPE_LIBRARY}"
 	"${PNG16_LIBRARY}"
 	"${BZ2_LIBRARY}"

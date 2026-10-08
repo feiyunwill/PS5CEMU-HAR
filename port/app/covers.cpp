@@ -4,7 +4,7 @@
 // The title is mounted and meta/iconTex.tga (or meta/bootTvTex.tga, the 1280 x 720 picture the
 // Wii U shows on the TV while a game loads) read as Cemu's game list does it
 // (wxGameList::AsyncWorkerThread), so this file keeps Cemu's MPL-2.0 licence. The launcher
-// (frontend/ui_host.cpp) reads only uncompressed 32-bit top-down TGAs, while these may be
+// (ui/images.cpp) reads only uncompressed 32-bit top-down TGAs, while these may be
 // run-length encoded or bottom-up, so each is rewritten once as a 32-bit top-down TGA.
 
 #include "emulator.h"

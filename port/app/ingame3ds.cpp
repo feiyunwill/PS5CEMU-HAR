@@ -79,10 +79,11 @@ namespace ps5ingame3ds
 			VkDescriptorPool pool = VK_NULL_HANDLE;
 			ImGuiContext* context = nullptr;
 			ImFontAtlas* atlas = nullptr;
-			ImFont* title = nullptr;
-			ImFont* head = nullptr;
-			ImFont* row = nullptr;
-			ImFont* small = nullptr;
+			ImFont* head = nullptr;	 // the menu's styles (menu_canvas.h): heading
+			ImFont* body = nullptr;	 // body
+			ImFont* row = nullptr;	 // label
+			ImFont* small = nullptr; // caption
+			ImFont* chip = nullptr;
 			bool fontsUploaded = false;
 			int uploadAge = -1;	   // frames since the font upload, until its buffer goes
 			bool pending = false;  // a frame's draw data waits for the render pass
@@ -96,13 +97,11 @@ namespace ps5ingame3ds
 		Gpu g;
 		uint32_t s_buttons = 0, s_pressed = 0;
 		uint32_t s_menuButtons = 0; // the same, with the left stick's directions as the D-pad's
-		bool s_confirmLibrary = false;
 		// the menu's panel: its place in the list and the open category (the renderer's), and a new
 		// opening, asked for by ToggleMenu on the game's loop
 		ps5menu::SideMenu s_side;
 		std::atomic<bool> s_menuFresh{false};
 		int s_stateSlot = 1;
-		bool s_confirmLoad = false;
 
 		constexpr const char* kLayouts[] = {"Top above bottom", "Top screen only", "Large top screen", "Side by side"};
 		constexpr const char* kFilters[] = {"None", "Anime4K", "Bicubic", "ScaleForce", "xBRZ", "MMPX"};
@@ -295,15 +294,27 @@ namespace ps5ingame3ds
 				return false;
 			}
 
-			sint32 fontSize = 0;
-			uint8* font = extractCafeDefaultFont(&fontSize); // kept: the atlas reads it
+			// Lexend's three weights at the menu's sizes, or the Wii U's system font if they are missing
 			g.atlas = new ImFontAtlas();
-			ImFontConfig config{};
-			config.FontDataOwnedByAtlas = false;
-			g.title = g.atlas->AddFontFromMemoryTTF(font, fontSize, 48.0f * scale, &config);
-			g.head = g.atlas->AddFontFromMemoryTTF(font, fontSize, 32.0f * scale, &config);
-			g.row = g.atlas->AddFontFromMemoryTTF(font, fontSize, 24.0f * scale, &config);
-			g.small = g.atlas->AddFontFromMemoryTTF(font, fontSize, 20.0f * scale, &config);
+			auto add = [&](ps5menu::Weight weight, float size) {
+				ImFontConfig config{};
+				config.FontDataOwnedByAtlas = false; // kept: the atlas reads them
+				const auto& file = ps5menu::FontFile(weight);
+				if (!file.empty())
+				{
+					config.OversampleH = 2;
+					return g.atlas->AddFontFromMemoryTTF((void*)file.data(), (int)file.size(), size * scale, &config, ps5menu::kGlyphRanges);
+				}
+				static sint32 fallbackSize = 0;
+				static uint8* fallback = extractCafeDefaultFont(&fallbackSize);
+				return g.atlas->AddFontFromMemoryTTF(fallback, fallbackSize, size * scale, &config);
+			};
+			using ps5menu::Weight;
+			g.head = add(Weight::SemiBold, ps5menu::kHeading);
+			g.body = add(Weight::Medium, ps5menu::kBody);
+			g.row = add(Weight::Regular, ps5menu::kLabel);
+			g.small = add(Weight::Regular, ps5menu::kCaption);
+			g.chip = add(Weight::SemiBold, ps5menu::kChip);
 			g.context = ImGui::CreateContext(g.atlas);
 			ImGui::SetCurrentContext(g.context);
 			ImGuiIO& io = ImGui::GetIO();
@@ -376,8 +387,9 @@ namespace ps5ingame3ds
 			}
 			const int resolution = std::clamp(settings.resolution, 1, 10);
 			std::vector<Row> rows;
-			rows.push_back({"resume", "Back to the game", "", false, "Closes this menu: the game carries on where it is."});
-			rows.push_back({"screens", "Screens", "", false, "The screens' layout, which one is the main one, and the border.", {
+			rows.push_back({"screens", "Screens and border",
+				fmt::format("{} \u00b7 {}", kLayouts[std::clamp(settings.layout, 0, 3)], kBorderNames[std::clamp(settings.border, 0, kBorderCount - 1)]), false,
+				"The screens' layout, which one is the main one, and the border.", {
 				{"layout", "Layout", kLayouts[std::clamp(settings.layout, 0, 3)], true,
 					"How the two screens share the TV. In the game, touchpad click + R1 goes to the next."},
 				{"swap", "Main screen", settings.swapScreens ? "Bottom" : "Top", true,
@@ -385,7 +397,8 @@ namespace ps5ingame3ds
 				{"border", "Border", kBorderNames[std::clamp(settings.border, 0, kBorderCount - 1)], true,
 					"Artwork around the screens, never over them. Also in the launcher's Settings > Borders."},
 			}});
-			rows.push_back({"graphics", "Graphics", "", false, "Internal resolution, texture filter and the performance overlay.", {
+			rows.push_back({"graphics", "Graphics", fmt::format("{}x \u00b7 {}", resolution, kFilters[std::clamp(settings.textureFilter, 0, 5)]), false,
+				"Internal resolution, texture filter and the performance overlay.", {
 				{"resolution", "Internal resolution", fmt::format("{}x  ({}x{})", resolution, 400 * resolution, 240 * resolution), true,
 					"How large the 3D scenes are drawn before they are scaled to the TV. Higher is sharper and asks more of the GPU."},
 				{"filter", "Texture filter", kFilters[std::clamp(settings.textureFilter, 0, 5)], true,
@@ -393,20 +406,21 @@ namespace ps5ingame3ds
 				{"performance", "Performance overlay", settings.performance ? "On" : "Off", true,
 					"The frame rate and the emulation's speed, in the top left corner."},
 			}});
-			rows.push_back({"pace", "Speed", "", false, "The emulated CPU's clock, and how fast the game may run.", {
+			rows.push_back({"pace", "Speed", settings.speedLimit ? fmt::format("{}%", settings.speedLimit) : "Unlimited", false,
+				"The emulated CPU's clock, and how fast the game may run.", {
 				{"cpu", "CPU clock", fmt::format("{}%", settings.cpuClock), true,
 					"Below 100% can bring a slow game to full speed; above it smooths games that dropped frames on the 3DS."},
 				{"speed", "Speed limit", settings.speedLimit ? fmt::format("{}%", settings.speedLimit) : "None", true,
 					"Above 100% hurries through slow scenes; None runs as fast as the PS5 can. For this game only."},
 			}});
-			rows.push_back({"volume", "Volume", fmt::format("{}%", settings.volume), true, "The game's sound. Left and Right change it by 10%."});
-			rows.push_back({"states", "Save states", "", false, "Five slots for this game: save exactly where you are, and come back to it.", {
+			Row volume{"volume", "Volume", fmt::format("{}%", settings.volume), true, "The game's sound. Left and Right change it by 10%."};
+			volume.slider = settings.volume / 100.0f;
+			rows.push_back({"states", "Save states", fmt::format("Slot {}", s_stateSlot), false,
+				"Five slots for this game: save exactly where you are, and come back to it.", {
 				{"slot", "Slot", fmt::format("{}  {}", s_stateSlot, time.empty() ? "(empty)" : time), true,
 					"Which of this game's five slots to save to or load from."},
 				{"save", "Save to this slot", stateMessage, false,
 					"Saves the game as it is now, replacing what the slot had. Newer app versions may not load it: keep saving in the game too."},
-				{"load", "Load this slot", s_confirmLoad ? "Press Cross again" : "", false,
-					"Goes back to the moment the slot was saved. What you did since is lost, so it asks twice."},
 			}});
 			Row cheatRows{"cheats", "Cheats", "", false, "The game's cheats, from azahar/cheats/<title ID>.txt (Gateway format)."};
 			for (size_t i = 0; i < cheats.size(); i++)
@@ -418,13 +432,15 @@ namespace ps5ingame3ds
 			else
 				cheatRows.value = fmt::format("{} of {} on", std::count_if(cheats.begin(), cheats.end(), [](const auto& c) { return c.second; }), cheats.size());
 			rows.push_back(cheatRows);
-			rows.push_back({"amiibos", "Amiibo", "", false, "Hold an amiibo dump to the 3DS's reader when the game asks for one.", {
+			rows.push_back({"amiibos", "Amiibo", amiibo, false, "Hold an amiibo dump to the 3DS's reader when the game asks for one.", {
 				{"amiibo", "Amiibo", amiibo, true,
 					noAmiibo ? "Put amiibo dumps (.bin) in /data/ps5cemu/amiibo to scan them here." :
 							   "Left and Right choose an amiibo dump; Cross holds it to the reader."},
 				{"noamiibo", "Take the amiibo away", amiiboMessage, false, "Takes the amiibo off the reader, as lifting it off would."},
 			}});
-			rows.push_back({"controls", "Controls", "", false, "Motion controls, the sticks' deadzone and where A and B are.", {
+			rows.push_back(volume);
+			rows.push_back({"controls", "Controls", settings.aOnCircle ? "A on Circle" : "A on Cross", false,
+				"Motion controls, the sticks' deadzone and where A and B are.", {
 				{"motion", "Motion controls", settings.motion ? "On" : "Off", true,
 					"The DualSense's gyroscope and accelerometer as the 3DS's, for the games that aim or steer by tilting."},
 				{"deadzone", "Stick deadzone", fmt::format("{}%", settings.deadzone), true,
@@ -432,11 +448,35 @@ namespace ps5ingame3ds
 				{"ab", "A and B", settings.aOnCircle ? "A on Circle" : "A on Cross", true,
 					"A on Circle and B on Cross, where the 3DS has them, or the other way round, with X and Y swapped to match."},
 			}});
-			Row library{"library", "Back to the library", s_confirmLibrary ? "Press Cross again" : "", false,
-				"Leaves the game for the library. What you have not saved in the game is lost."};
+			Row library{"library", "Quit to the library", "", false,
+				"Leaves the game for the library. What you have not saved in the game is lost, so Cross is held."};
 			library.apart = true;
+			library.hold = true;
+			// loading a state, as a row too: held, as the quick action is
+			Row load{"load", "Load this slot", time.empty() ? "Empty" : "", false,
+				"Goes back to the moment the slot was saved. What you did since is lost, so Cross is held."};
+			load.hold = !time.empty();
+			for (Row& row : rows)
+				if (row.id == "states")
+					row.rows.push_back(load);
 			rows.push_back(library);
 			return rows;
+		}
+
+		// The quick actions above the list: back to the game, a state saved to or loaded (held) from
+		// the slot the list chooses, and the next layout of the screens
+		std::vector<ps5menu::Tile> Tiles(const Settings& settings)
+		{
+			bool empty;
+			{
+				std::lock_guard lock(s_mutex);
+				empty = s_stateSlot > (int)s_stateTimes.size() || s_stateTimes[s_stateSlot - 1].empty();
+			}
+			std::vector<ps5menu::Tile> tiles{{"resume", "Resume", "resume"},
+				{"save", "Save state", "save", fmt::format("Slot {}", s_stateSlot)},
+				{"load", "Load state", "load", empty ? fmt::format("Slot {} empty", s_stateSlot) : fmt::format("Slot {}", s_stateSlot), !empty},
+				{"layout", "Screens", "screens", kLayouts[std::clamp(settings.layout, 0, 3)]}};
+			return tiles;
 		}
 
 		// What a row chosen or changed does
@@ -482,18 +522,15 @@ namespace ps5ingame3ds
 				changed = false;
 				std::lock_guard lock(s_mutex);
 				if (id == "slot")
-				{
 					s_stateSlot = (s_stateSlot - 1 + change + kStateSlots) % kStateSlots + 1;
-					s_confirmLoad = false;
-				}
-				else if (id == "save" || (id == "load" && s_confirmLoad))
+				else if (id == "load" && (s_stateSlot > (int)s_stateTimes.size() || s_stateTimes[s_stateSlot - 1].empty()))
+					s_stateMessage = fmt::format("Slot {} is empty", s_stateSlot);
+				else if (id == "save" || id == "load")
 				{
+					// loading is held to here (side_menu.h)
 					s_stateRequest = id == "save" ? s_stateSlot : -s_stateSlot;
 					s_stateMessage = id == "save" ? "Saving..." : "Loading...";
-					s_confirmLoad = false;
 				}
-				else if (id == "load")
-					s_confirmLoad = true;
 				else if (id == "amiibo" && !chosen && !s_amiibo.empty())
 					s_amiiboIndex = (s_amiiboIndex + change + (int)s_amiibo.size()) % (int)s_amiibo.size();
 				else if (id == "amiibo" && !s_amiibo.empty())
@@ -503,11 +540,7 @@ namespace ps5ingame3ds
 				else if (id.rfind("cheat", 0) == 0 && id.size() > 5 && std::isdigit((unsigned char)id[5]))
 					s_extrasRequest = {ExtrasRequest::Cheat, std::atoi(id.c_str() + 5)};
 				else if (id == "library")
-				{
-					if (s_confirmLibrary)
-						s_libraryRequested = true;
-					s_confirmLibrary = true;
-				}
+					s_libraryRequested = true; // held to here
 			}
 			if (changed)
 				Change(next);
@@ -527,11 +560,9 @@ namespace ps5ingame3ds
 			{
 				// opened: on its first row, every category closed, the shortcut's buttons not counted
 				s_side.Reset();
-				s_confirmLibrary = false;
-				s_confirmLoad = false;
 			}
 			bool close = false;
-			const ps5menu::Action action = s_side.Update(MenuRows(settings), s_menuButtons, sceKernelGetProcessTime(), close);
+			const ps5menu::Action action = s_side.Update(MenuRows(settings), Tiles(settings), s_menuButtons, sceKernelGetProcessTime(), close);
 			if (close)
 			{
 				CloseMenu();
@@ -543,23 +574,19 @@ namespace ps5ingame3ds
 				std::lock_guard lock(s_mutex);
 				settings = s_settings; // as the change left them, for the rows drawn below
 			}
-			// the two that ask twice ask again once the focus moves away
-			if (s_side.Focus() != "library")
-				s_confirmLibrary = false;
-			if (s_side.Focus() != "load")
-				s_confirmLoad = false;
 
 			ImGuiIO& io = ImGui::GetIO();
 			const ImVec2 origin{(io.DisplaySize.x - 1920.0f * scale) * 0.5f, (io.DisplaySize.y - 1080.0f * scale) * 0.5f};
 			const Canvas canvas{ImGui::GetForegroundDrawList(), scale, origin, kColours};
 			ps5menu::Header header;
-			header.kicker = "NINTENDO 3DS";
+			header.system = "3DS";
+			header.status = "PAUSED";
 			header.title = name;
 			header.details = details;
 			header.cover = g.cover;
 			header.coverWidth = (float)g.coverWidth;
 			header.coverHeight = (float)g.coverHeight;
-			s_side.Draw(canvas, {g.head, g.row, g.small}, header, MenuRows(settings),
+			s_side.Draw(canvas, {g.head, g.body, g.row, g.small, g.chip}, header, MenuRows(settings), Tiles(settings),
 				{{"cross", "Choose"}, {"leftright", "Change"}, {"circle", s_side.Open().empty() ? "Back to the game" : "Back"}});
 		}
 

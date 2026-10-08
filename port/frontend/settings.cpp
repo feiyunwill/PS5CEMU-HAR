@@ -182,7 +182,6 @@ namespace ps5settings
 		{
 			const rapidjson::Value& ui = json["ui"];
 			Ui& out = settings.ui;
-			ReadBool(ui, "classic", out.classic);
 			ReadString(ui, "startOn", out.startOn);
 			if (out.startOn != "ask")
 				out.startOn = "last";
@@ -257,8 +256,6 @@ namespace ps5settings
 		writer.String(settings.launchError.c_str());
 		writer.Key("ui");
 		writer.StartObject();
-		writer.Key("classic");
-		writer.Bool(settings.ui.classic);
 		writer.Key("startOn");
 		writer.String(settings.ui.startOn.c_str());
 		writer.Key("lastSide");

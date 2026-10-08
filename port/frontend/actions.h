@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// PS5CEMU-HAR: what the launchers do besides drawing (docs/UI-REDESIGN.md, 9.7), shared by the
-// classic launcher (launcher.cpp) and the new one (shell.cpp): the folder browser's listing (with
-// sceKernelGetdents, as ProsperoEden's does) and the drives, what a folder holds for each side,
-// copying the logs to USB, clearing the shader caches, the Artic Base address, a mapping's
-// DualSense input, and the words both show.
+// PS5CEMU-HAR: what the launcher (shell/) does besides drawing (docs/UI-REDESIGN.md, 9.7): the folder
+// browser's listing (with sceKernelGetdents, as ProsperoEden's does) and the drives, what a folder
+// holds for each side, copying the logs to USB, clearing the shader caches, the Artic Base address, a
+// mapping's DualSense input, and the words it shows.
 
 #pragma once
 

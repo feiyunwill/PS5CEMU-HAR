@@ -37,7 +37,7 @@ namespace ps5paths
 	constexpr const char* kImageMountRecord = "/user/app/PPSA99360/mount_img.lnk";
 
 // everything PS5CEMU-HAR writes: on the console /data/ps5cemu; the launcher's preview on a PC
-// (tools/preview-launcher.sh) gives a folder of its own
+// (tools/preview-shell.sh) gives a folder of its own
 #ifndef PS5CEMU_DATA
 #define PS5CEMU_DATA "/data/ps5cemu"
 #endif

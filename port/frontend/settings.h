@@ -42,7 +42,6 @@ namespace ps5settings
 	// The new launcher's own (docs/UI-REDESIGN.md, 9.8), under "ui"
 	struct Ui
 	{
-		bool classic = false;		 // the classic launcher instead (L1 held as the app starts sets it, R1 clears it)
 		std::string startOn = "last"; // "last": the side last used; "ask": the side chooser
 		std::string lastSide;		 // "wiiu" or "3ds": the side last used, restored at every start
 		bool largerText = false;

@@ -204,7 +204,7 @@ namespace ps5boxart
 			return out;
 		}
 
-		// A 32-bit top-down TGA, as the launcher reads them (frontend/ui_host.cpp), written whole
+		// A 32-bit top-down TGA, as the launcher reads them (ui/images.cpp), written whole
 		// or not at all
 		bool WriteTga(const std::string& path, const std::vector<uint8_t>& rgba, int width, int height)
 		{

@@ -1,18 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // PS5CEMU-HAR: the in-game menus' look, the Wii U's (ingame.cpp) and the 3DS's (ingame3ds.cpp): the
-// launcher's panels, rows, colours and controller hints (its stylesheet, frontend/ui/har.rcss, in the
-// colours tools/render-layout.py gives each side), drawn with ImGui on the launcher's 1920x1080
-// layout scaled to the screen, so a menu over a game is laid out as the launcher's screens are.
+// launcher's (docs/UI-REDESIGN.md, 6.9 and 7), drawn with ImGui on the launcher's 1920x1080 layout
+// scaled to the screen. Its colours are the launcher's tokens (port/ui/tokens.json), its type Lexend
+// (tools/render-menu-fonts.py's three weights), its focus the launcher's double ring. In a game there
+// is no glass: panels are ink at 92 %, with no blur (4.2, rule 11).
 
 #pragma once
+
+#include "paths.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <fstream>
+#include <iterator>
 #include <string>
+#include <vector>
 
 namespace ps5menu
 {
@@ -21,18 +29,77 @@ namespace ps5menu
 		return IM_COL32(rgb >> 16, (rgb >> 8) & 255, rgb & 255, alpha);
 	}
 
-	// A side's colours, the launcher's (render-layout.py's THEMES): the Wii U's blue, or the 3DS's gold
+	inline ImU32 Fade(ImU32 colour, float alpha)
+	{
+		const float a = ((colour >> IM_COL32_A_SHIFT) & 255) * std::clamp(alpha, 0.0f, 1.0f);
+		return (colour & ~IM_COL32_A_MASK) | ((ImU32)(a + 0.5f) << IM_COL32_A_SHIFT);
+	}
+
+	// The characters the menus ask Lexend for: Latin-1, and the dashes, quotes, bullet, ellipsis and
+	// angle quotes (tools/render-menu-fonts.py cuts the fonts to these)
+	inline constexpr ImWchar kGlyphRanges[] = {0x0020, 0x00ff, 0x2010, 0x2027, 0x2039, 0x203a, 0};
+
+	// The three weights, as the menus' files name them (assets/ui/fonts)
+	enum class Weight
+	{
+		Regular = 1,
+		Medium = 2,
+		SemiBold = 3
+	};
+	inline const char* WeightFile(Weight weight)
+	{
+		switch (weight)
+		{
+		case Weight::Medium: return "Lexend-Medium.ttf";
+		case Weight::SemiBold: return "Lexend-SemiBold.ttf";
+		default: return "Lexend-Regular.ttf";
+		}
+	}
+
+	// A weight's file, read once and kept: ImGui's atlases read it as they are built. Empty when it
+	// is missing, and the menus fall back on the console's own font.
+	inline const std::vector<unsigned char>& FontFile(Weight weight)
+	{
+		static std::vector<unsigned char> files[4];
+		static bool read[4] = {};
+		const int i = std::clamp((int)weight, 1, 3);
+		if (!read[i])
+		{
+			read[i] = true;
+			std::ifstream in(ps5paths::Assets() + "/ui/fonts/" + WeightFile(weight), std::ios::binary);
+			files[i].assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+		}
+		return files[i];
+	}
+
+	// A side's colours: the launcher's tokens, with the Wii U's sky or the 3DS's sand as the accent.
+	// The names before ink are those the menus have always used.
 	struct Palette
 	{
 		ImU32 title, text, copy, accent, kicker, line;
 		ImU32 panel, panelEdge, row, rowEdge, focus, focusEdge, dim;
+		ImU32 ink, faint, accentInk, bad, good;
 	};
-	constexpr Palette kBlue{Colour(0xf3f7ff), Colour(0xf3f7ff), Colour(0xa9bcd6), Colour(0x5aa9ff), Colour(0x5aa9ff), Colour(0xffffff, 0x1e),
-		Colour(0x07101f, 0xf0), Colour(0xffffff, 0x1e), Colour(0xffffff, 0x10), Colour(0xffffff, 0x0c), Colour(0x5aa9ff, 0x28),
-		Colour(0x5aa9ff), Colour(0x02060e, 0xb8)};
-	constexpr Palette kGold{Colour(0xfff7e8), Colour(0xfff7e8), Colour(0xd8c6a3), Colour(0xf4b63f), Colour(0xf4b63f), Colour(0xffffff, 0x1e),
-		Colour(0x1a1206, 0xf0), Colour(0xffffff, 0x1e), Colour(0xffffff, 0x10), Colour(0xffffff, 0x0c), Colour(0xf4b63f, 0x28),
-		Colour(0xf4b63f), Colour(0x0e0902, 0xb8)};
+	constexpr Palette Side(uint32_t accent, uint32_t accentInk)
+	{
+		return {Colour(0xf5f7fb), Colour(0xf5f7fb), Colour(0xf5f7fb, 0xb3), Colour(accent), Colour(accent), Colour(0xffffff, 0x17),
+			Colour(0x0a0f1b, 0xeb), Colour(0xffffff, 0x1a), Colour(0xffffff, 0x0e), Colour(0xffffff, 0x1a), Colour(0xffffff, 0x16),
+			Colour(0xffffff), Colour(0x03050a, 0x9e), Colour(0x05070d), Colour(0xf5f7fb, 0x75), Colour(accentInk), Colour(0xff7272),
+			Colour(0x3dd6a3)};
+	}
+	constexpr Palette kBlue = Side(0x5aa9ff, 0x071a33);
+	constexpr Palette kGold = Side(0xf4b63f, 0x2a1a02);
+
+	// The type styles the menus use (docs/UI-REDESIGN.md, 7.2), each a font made at its size
+	struct Fonts
+	{
+		ImFont* heading; // 32 SemiBold: the game's name, a sheet's title
+		ImFont* body;	 // 26 Medium: a row's label
+		ImFont* label;	 // 24 Regular: values, tiles, hints
+		ImFont* caption; // 20 Regular: help and facts
+		ImFont* chip;	 // 18 SemiBold: badges, in capitals
+	};
+	constexpr float kHeading = 32, kBody = 26, kLabel = 24, kCaption = 20, kChip = 18;
 
 	struct Canvas
 	{
@@ -43,21 +110,42 @@ namespace ps5menu
 
 		ImVec2 At(float x, float y) const { return {origin.x + x * scale, origin.y + y * scale}; }
 
-		void Panel(float x, float y, float width, float height) const
+		float Width(ImFont* font, float size, const std::string& text) const
 		{
-			draw->AddRectFilled(At(x + 2, y + 2), At(x + width - 3, y + height - 3), colours.panel, 28 * scale);
-			draw->AddRect(At(x + 2, y + 2), At(x + width - 3, y + height - 3), colours.panelEdge, 28 * scale, 0, 2 * scale);
+			return font->CalcTextSizeA(size * scale, FLT_MAX, 0.0f, text.c_str()).x / scale;
 		}
 
-		// A row as the launcher's: a faint card, or the accent's tint inside an accent outline
-		void Row(float x, float y, float width, float height, bool focused) const
+		// A sheet: ink at 92 % with a one-pixel light edge, the launcher's sheet radius
+		void Panel(float x, float y, float width, float height) const
 		{
-			const ImVec2 a = At(x + 2, y + 2), b = At(x + width - 3, y + height - 3);
-			draw->AddRectFilled(a, b, focused ? colours.focus : colours.row, 16 * scale);
+			draw->AddRectFilled(At(x, y), At(x + width, y + height), colours.panel, 28 * scale);
+			draw->AddRect(At(x, y), At(x + width, y + height), colours.panelEdge, 28 * scale, 0, std::max(1.0f, scale));
+		}
+
+		// The focused element's double ring: ink inside, white outside, so it reads on any picture,
+		// breathing a little (±6 % over 2.4 s) and glowing in the side's colour
+		void Ring(float x, float y, float width, float height, float radius, float time) const
+		{
+			const float breath = 0.94f + 0.06f * std::sin(time * 6.2831853f / 2.4f);
+			for (int glow = 3; glow >= 1; glow--)
+			{
+				const float out = 4.0f + 5.0f * glow;
+				draw->AddRect(At(x - out, y - out), At(x + width + out, y + height + out), Fade(colours.accent, 0.06f * breath),
+					(radius + out) * scale, 0, 5 * scale);
+			}
+			draw->AddRect(At(x - 2, y - 2), At(x + width + 2, y + height + 2), Fade(colours.ink, 0.9f), (radius + 2) * scale, 0, 4 * scale);
+			draw->AddRect(At(x - 5.5f, y - 5.5f), At(x + width + 5.5f, y + height + 5.5f), Fade(colours.focusEdge, breath),
+				(radius + 5.5f) * scale, 0, 3.5f * scale);
+		}
+
+		// A card: glass at rest; brighter glass in the ring when focused
+		void Row(float x, float y, float width, float height, bool focused, float time = 0.0f) const
+		{
+			draw->AddRectFilled(At(x, y), At(x + width, y + height), focused ? colours.focus : colours.row, 20 * scale);
 			if (focused)
-				draw->AddRect(a, b, colours.focusEdge, 16 * scale, 0, 3 * scale);
+				Ring(x, y, width, height, 20, time);
 			else
-				draw->AddRect(a, b, colours.rowEdge, 16 * scale, 0, scale);
+				draw->AddRect(At(x, y), At(x + width, y + height), colours.rowEdge, 20 * scale, 0, std::max(1.0f, scale));
 		}
 
 		void Text(ImFont* font, float size, float x, float y, ImU32 colour, const std::string& text, float wrap = 0.0f) const
@@ -67,45 +155,214 @@ namespace ps5menu
 
 		void TextRight(ImFont* font, float size, float right, float y, ImU32 colour, const std::string& text) const
 		{
-			const float width = font->CalcTextSizeA(size * scale, FLT_MAX, 0.0f, text.c_str()).x / scale;
-			Text(font, size, right - width, y, colour, text);
+			Text(font, size, right - Width(font, size, text), y, colour, text);
 		}
 
-		// A controller hint: its button's mark, as the launcher's mono icons have it, and what it
-		// does. Returns where the next one goes.
-		float Hint(ImFont* font, float x, float y, const char* button, const std::string& label) const
+		void TextCentred(ImFont* font, float size, float centre, float y, ImU32 colour, const std::string& text) const
 		{
-			const ImU32 colour = colours.copy;
+			Text(font, size, centre - Width(font, size, text) / 2, y, colour, text);
+		}
+
+		// Text that never overflows: cut at a word where it can be, ending in an ellipsis
+		std::string Fit(ImFont* font, float size, const std::string& text, float width) const
+		{
+			if (Width(font, size, text) <= width)
+				return text;
+			std::string cut = text;
+			while (!cut.empty() && Width(font, size, cut + "…") > width)
+			{
+				const size_t space = cut.find_last_of(' ');
+				if (space != std::string::npos && space > cut.size() / 2)
+					cut.resize(space);
+				else
+				{
+					cut.pop_back();
+					while (!cut.empty() && ((unsigned char)cut.back() & 0xc0) == 0x80)
+						cut.pop_back(); // never half a character
+				}
+			}
+			while (!cut.empty() && (cut.back() == ' ' || cut.back() == ',' || cut.back() == '.' || cut.back() == ':'))
+				cut.pop_back();
+			return cut + "…";
+		}
+
+		// Capitals spaced out, as the launcher's overlines and badges have them. Returns the end.
+		float Tracked(ImFont* font, float size, float x, float y, ImU32 colour, const std::string& text, float tracking = 2.0f) const
+		{
+			char letter[2] = {};
+			for (const char c : text)
+			{
+				letter[0] = c;
+				draw->AddText(font, size * scale, At(x, y), colour, letter);
+				x += font->CalcTextSizeA(size * scale, FLT_MAX, 0.0f, letter).x / scale + tracking;
+			}
+			return x - tracking;
+		}
+
+		// A badge: a small rounded chip, its words in capitals; a square of the colour first when dot.
+		// Returns where the next one goes.
+		float Chip(ImFont* font, float x, float y, const std::string& text, ImU32 colour, ImU32 fill, bool dot = false) const
+		{
+			float width = 24 + (dot ? 22 : 0);
+			char letter[2] = {};
+			for (const char c : text)
+			{
+				letter[0] = c;
+				width += font->CalcTextSizeA(kChip * scale, FLT_MAX, 0.0f, letter).x / scale + 1.5f;
+			}
+			draw->AddRectFilled(At(x, y), At(x + width, y + 34), fill, 10 * scale);
+			float textX = x + 12;
+			if (dot)
+			{
+				draw->AddRectFilled(At(x + 12, y + 10), At(x + 26, y + 24), colour, 4 * scale);
+				textX += 22;
+			}
+			Tracked(font, kChip, textX, y + 7, colour, text, 1.5f);
+			return x + width + 10;
+		}
+
+		// A chevron centred at x, y: right (a category, or a setting's next value), down (an open
+		// category) or left (a setting's previous value)
+		enum class Point
+		{
+			Right,
+			Down,
+			Left
+		};
+		void Chevron(float x, float y, ImU32 colour, Point point = Point::Right) const
+		{
+			const float r = 6.0f;
 			const float thick = 2.2f * scale;
-			const ImVec2 centre = At(x + 13, y + 14);
-			const float r = 10 * scale;
+			if (point == Point::Down)
+			{
+				draw->AddLine(At(x - r, y - r / 2), At(x, y + r / 2), colour, thick);
+				draw->AddLine(At(x, y + r / 2), At(x + r, y - r / 2), colour, thick);
+				return;
+			}
+			const float side = point == Point::Left ? -1.0f : 1.0f;
+			draw->AddLine(At(x - side * r / 2, y - r), At(x + side * r / 2, y), colour, thick);
+			draw->AddLine(At(x + side * r / 2, y), At(x - side * r / 2, y + r), colour, thick);
+		}
+
+		// A DualSense button's mark, in the launcher's line style, centred at x, y
+		void Button(float x, float y, const char* button, ImU32 colour) const
+		{
+			const float thick = 2.2f * scale;
+			const ImVec2 centre = At(x, y);
+			const float r = 9 * scale;
 			if (std::strcmp(button, "cross") == 0)
 			{
-				draw->AddLine({centre.x - r, centre.y - r}, {centre.x + r, centre.y + r}, colour, thick);
-				draw->AddLine({centre.x - r, centre.y + r}, {centre.x + r, centre.y - r}, colour, thick);
+				draw->AddLine({centre.x - r * 0.8f, centre.y - r * 0.8f}, {centre.x + r * 0.8f, centre.y + r * 0.8f}, colour, thick);
+				draw->AddLine({centre.x - r * 0.8f, centre.y + r * 0.8f}, {centre.x + r * 0.8f, centre.y - r * 0.8f}, colour, thick);
 			}
 			else if (std::strcmp(button, "circle") == 0)
 				draw->AddCircle(centre, r, colour, 0, thick);
 			else if (std::strcmp(button, "leftright") == 0)
 			{
-				draw->AddLine({centre.x - r - 2 * scale, centre.y}, {centre.x + r + 2 * scale, centre.y}, colour, thick);
 				for (const float side : {-1.0f, 1.0f})
 				{
-					const ImVec2 tip{centre.x + side * (r + 2 * scale), centre.y};
+					const ImVec2 tip{centre.x + side * (r + 3 * scale), centre.y};
 					draw->AddLine(tip, {tip.x - side * 6 * scale, centre.y - 6 * scale}, colour, thick);
 					draw->AddLine(tip, {tip.x - side * 6 * scale, centre.y + 6 * scale}, colour, thick);
 				}
 			}
 			else if (std::strcmp(button, "touchpad") == 0)
-				draw->AddRect({centre.x - r - 3 * scale, centre.y - r + 3 * scale}, {centre.x + r + 3 * scale, centre.y + r - 3 * scale},
-					colour, 3 * scale, 0, thick);
+				draw->AddRect({centre.x - r - 3 * scale, centre.y - r + 3 * scale}, {centre.x + r + 3 * scale, centre.y + r - 3 * scale}, colour,
+					3 * scale, 0, thick);
 			else if (std::strcmp(button, "triangle") == 0)
 				draw->AddTriangle({centre.x, centre.y - r}, {centre.x + r, centre.y + r * 0.75f}, {centre.x - r, centre.y + r * 0.75f}, colour, thick);
+			else if (std::strcmp(button, "square") == 0)
+				draw->AddRect({centre.x - r * 0.8f, centre.y - r * 0.8f}, {centre.x + r * 0.8f, centre.y + r * 0.8f}, colour, 2 * scale, 0, thick);
 			else if (std::strcmp(button, "options") == 0)
 				for (const float line : {-1.0f, 0.0f, 1.0f}) // the Options button's three lines
 					draw->AddLine({centre.x - r * 0.7f, centre.y + line * 5 * scale}, {centre.x + r * 0.7f, centre.y + line * 5 * scale}, colour, thick);
-			Text(font, 20, x + 38, y + 2, colour, label);
-			return x + 38 + font->CalcTextSizeA(20 * scale, FLT_MAX, 0.0f, label.c_str()).x / scale + 44;
+		}
+
+		// A controller hint, as the launcher's: the button's mark and what it does. Returns where the
+		// next one goes.
+		float Hint(ImFont* font, float x, float y, const char* button, const std::string& label) const
+		{
+			Button(x + 11, y + 14, button, colours.copy);
+			Text(font, kLabel - 2, x + 30, y + 1, colours.copy, label);
+			return x + 30 + Width(font, kLabel - 2, label) + 32;
+		}
+
+		// A quick action's picture, drawn in lines around x, y: resume, save, load, screens, swap,
+		// packs, amiibo
+		void Icon(const std::string& name, float x, float y, ImU32 colour) const
+		{
+			const float s = scale, thick = 2.4f * s;
+			const ImVec2 c = At(x, y);
+			if (name == "resume")
+				draw->AddTriangleFilled({c.x - 7 * s, c.y - 10 * s}, {c.x - 7 * s, c.y + 10 * s}, {c.x + 10 * s, c.y}, colour);
+			else if (name == "save")
+			{
+				// a disk: its body with a cut corner, the label and the shutter
+				const ImVec2 body[] = {{c.x - 12 * s, c.y - 12 * s}, {c.x + 7 * s, c.y - 12 * s}, {c.x + 12 * s, c.y - 7 * s},
+					{c.x + 12 * s, c.y + 12 * s}, {c.x - 12 * s, c.y + 12 * s}};
+				draw->AddPolyline(body, 5, colour, ImDrawFlags_Closed, thick);
+				draw->AddRect({c.x - 6 * s, c.y - 12 * s}, {c.x + 5 * s, c.y - 5 * s}, colour, 0, 0, thick);
+				draw->AddRect({c.x - 7 * s, c.y + 2 * s}, {c.x + 7 * s, c.y + 12 * s}, colour, 0, 0, thick);
+			}
+			else if (name == "load")
+			{
+				// an arrow down into a tray
+				draw->AddLine({c.x, c.y - 13 * s}, {c.x, c.y + 4 * s}, colour, thick);
+				draw->AddLine({c.x - 7 * s, c.y - 3 * s}, {c.x, c.y + 4 * s}, colour, thick);
+				draw->AddLine({c.x + 7 * s, c.y - 3 * s}, {c.x, c.y + 4 * s}, colour, thick);
+				const ImVec2 tray[] = {{c.x - 12 * s, c.y + 3 * s}, {c.x - 12 * s, c.y + 12 * s}, {c.x + 12 * s, c.y + 12 * s}, {c.x + 12 * s, c.y + 3 * s}};
+				draw->AddPolyline(tray, 4, colour, 0, thick);
+			}
+			else if (name == "screens")
+			{
+				// the 3DS's two screens, the top one wider
+				draw->AddRect({c.x - 12 * s, c.y - 13 * s}, {c.x + 12 * s, c.y - 1 * s}, colour, 2 * s, 0, thick);
+				draw->AddRect({c.x - 8 * s, c.y + 3 * s}, {c.x + 8 * s, c.y + 13 * s}, colour, 2 * s, 0, thick);
+			}
+			else if (name == "swap")
+			{
+				// a TV and a GamePad, arrows between them
+				draw->AddRect({c.x - 14 * s, c.y - 12 * s}, {c.x + 2 * s, c.y - 1 * s}, colour, 2 * s, 0, thick);
+				draw->AddRect({c.x - 2 * s, c.y + 3 * s}, {c.x + 14 * s, c.y + 12 * s}, colour, 3 * s, 0, thick);
+				draw->AddLine({c.x + 7 * s, c.y - 10 * s}, {c.x + 12 * s, c.y - 5 * s}, colour, thick);
+				draw->AddLine({c.x + 12 * s, c.y - 5 * s}, {c.x + 12 * s, c.y - 10 * s}, colour, thick);
+				draw->AddLine({c.x - 7 * s, c.y + 10 * s}, {c.x - 12 * s, c.y + 5 * s}, colour, thick);
+				draw->AddLine({c.x - 12 * s, c.y + 5 * s}, {c.x - 12 * s, c.y + 10 * s}, colour, thick);
+			}
+			else if (name == "packs")
+			{
+				// three layers, the top one over the others
+				for (const float layer : {6.0f, 0.0f, -6.0f})
+				{
+					const ImVec2 diamond[] = {{c.x, c.y + layer * s - 7 * s}, {c.x + 13 * s, c.y + layer * s}, {c.x, c.y + layer * s + 7 * s},
+						{c.x - 13 * s, c.y + layer * s}};
+					draw->AddConvexPolyFilled(diamond, 4, colours.ink);
+					draw->AddPolyline(diamond, 4, colour, ImDrawFlags_Closed, thick);
+				}
+			}
+			else if (name == "amiibo")
+			{
+				// a figure's head on its round base
+				draw->AddCircle({c.x, c.y - 6 * s}, 6 * s, colour, 0, thick);
+				draw->AddLine({c.x - 5 * s, c.y + 4 * s}, {c.x + 5 * s, c.y + 4 * s}, colour, thick);
+				ImVec2 base[24];
+				for (int i = 0; i < 24; i++)
+				{
+					const float angle = i * 6.2831853f / 24;
+					base[i] = {c.x + 13 * s * std::cos(angle), c.y + 9 * s + 4.5f * s * std::sin(angle)};
+				}
+				draw->AddPolyline(base, 24, colour, ImDrawFlags_Closed, thick);
+			}
+		}
+
+		// Hold to confirm: a ring that fills from the top over the hold
+		void HoldRing(float x, float y, float radius, float progress, ImU32 colour) const
+		{
+			draw->AddCircle(At(x, y), radius * scale, Fade(colour, 0.25f), 0, 3 * scale);
+			if (progress <= 0)
+				return;
+			draw->PathArcTo(At(x, y), radius * scale, -1.5707963f, -1.5707963f + 6.2831853f * std::min(progress, 1.0f), 32);
+			draw->PathStroke(colour, 0, 3 * scale);
 		}
 	};
 

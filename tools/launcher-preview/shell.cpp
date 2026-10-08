@@ -4,13 +4,25 @@
 // The launcher's own code (port/frontend/shell, the UI kit in port/ui, the catalogue, the settings,
 // GameTDB's facts and the compatibility list; port/azahar's library and controls) runs as it does on
 // the console, and the kit draws with the PC's Vulkan (Mesa's lavapipe will do) into an image read
-// back after each frame, which the script's shots save. In place of Cemu and the console it has the
-// classic preview's samples (console.cpp): Wii U games, graphic packs, controllers, and the 3DS
-// games the script makes (tools/launcher-preview/make-3ds-samples.py).
+// back after each frame, which the script's shots save. In place of Cemu and the console it has
+// samples (console.cpp): Wii U games, graphic packs, controllers, and the 3DS games the script
+// makes (tools/launcher-preview/make-3ds-samples.py).
 //
 //   shell-preview OUTPUT_FOLDER SCRIPT GAMES_FOLDER 3DS_GAMES_FOLDER
 //
-// The script reads as the classic preview's (preview.cpp says how). The launcher starts as it would
+// The script has one command a line ('#' starts a comment):
+//   press BUTTON...  each button down for 3 frames, then up for 3, one after another
+//                    (touchpad+options: the two together)
+//   hold BUTTON N    down for N frames, then up for 3
+//   wait N           N frames
+//   shot NAME        the frame on screen as OUTPUT_FOLDER/NAME.png
+//   record NAME      from here, every other frame (30 a second) as OUTPUT_FOLDER/NAME/00000.png on,
+//                    for a video of the launcher (ffmpeg -framerate 30 -i NAME/%05d.png makes one)
+//   stop             no more recording
+// Buttons: up down left right cross circle square triangle l1 r1 l2 r2 l3 r3 options create
+// touchpad, and the sticks: ls-up ls-down ls-left ls-right rs-up rs-down rs-left rs-right.
+//
+// The launcher starts as it would
 // after earlier sessions, on the Wii U side's Home; with PREVIEW_FIRST set, as on a first start (the
 // Setup check, then the side with games); PREVIEW_ASK sets Start on: Ask each time; PREVIEW_UPDATE has
 // a newer release found; PREVIEW_NO_DATA, /data out of reach; PREVIEW_LAUNCH_ERROR, the last game not

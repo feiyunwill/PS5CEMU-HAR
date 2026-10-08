@@ -57,33 +57,6 @@ namespace ps5shell
 		s_hostSet = true;
 	}
 
-	bool Wanted(ps5settings::Launcher& settings)
-	{
-		// L1 or R1 held as the app starts: the classic launcher, or the new one again
-		ps5pad::Data data{};
-		bool read = false;
-		for (int attempt = 0; attempt < 10 && !read; attempt++)
-		{
-			read = ps5pad::Read(0, data) && data.connected;
-			if (!read)
-				sceKernelUsleep(10000);
-		}
-		if (read && (data.buttons & ps5pad::kL1) && !(data.buttons & ps5pad::kR1) && !settings.ui.classic)
-		{
-			settings.ui.classic = true;
-			ps5settings::Save(settings);
-			ps5log::Line("[ui] L1 held at start: the classic launcher from now on");
-			ps5notify::Send("The classic launcher, from now on. Hold R1 as PS5CEMU-HAR starts for the new one.");
-		}
-		else if (read && (data.buttons & ps5pad::kR1) && !(data.buttons & ps5pad::kL1) && settings.ui.classic)
-		{
-			settings.ui.classic = false;
-			ps5settings::Save(settings);
-			ps5log::Line("[ui] R1 held at start: the new launcher from now on");
-		}
-		return !settings.ui.classic;
-	}
-
 	Outcome Run(ps5settings::Launcher& settings, ps5launcher::Status& status, const std::function<void(System)>& prepare,
 		std::optional<ps5launcher::Choice>& choice)
 	{

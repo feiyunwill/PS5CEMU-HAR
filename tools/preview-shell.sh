@@ -24,7 +24,7 @@ script=${1:-tools/launcher-preview/shell-screens.txt}
 mkdir -p "$out/include" "$out/obj"
 ln -sfn "$PS5CEMU_PACBREW/include/fmt" "$out/include/fmt"
 
-# folders for the folder browsers to show, and 3DS games for Azahar's side to read, as the classic
+# folders for the folder browsers to show, and 3DS games for Azahar's side to read, as the console
 # preview has them
 games=$out/games
 rm -rf "$games" "$out/data"

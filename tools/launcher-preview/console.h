@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-// PS5CEMU-HAR: what the launchers' previews on a PC share (tools/preview-launcher.sh for the classic
-// launcher, tools/preview-shell.sh for the new one): the script of DualSense presses and shots, the
+// PS5CEMU-HAR: what the launcher's preview on a PC (tools/preview-shell.sh) needs of the console: the
+// script of DualSense presses and shots, the
 // frame the shots save as PNGs, and in console.cpp the console and the emulators in brief, with
 // sample Wii U games, graphic packs and controllers, and a DualSense the script presses.
 
@@ -24,7 +24,7 @@ namespace preview
 	extern uint32_t buttons;		   // what the script holds down for the next frame
 	extern std::vector<uint8_t> frame; // BGRA, kWidth x kHeight: what a shot saves
 
-	// The script (preview.cpp's comment says how it reads)
+	// The script (shell.cpp's comment says how it reads)
 	void LoadScript(const std::string& path);
 	// After each frame: the buttons for the next, and the shots; the process ends with the script
 	void AdvanceScript();

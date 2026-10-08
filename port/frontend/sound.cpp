@@ -9,7 +9,7 @@
 // first needed.
 
 #include "sound.h"
-#include "ui_host.h"
+#include "../app/paths.h"
 #include "../ps5/log.h"
 
 #include <algorithm>
@@ -167,7 +167,7 @@ namespace ps5sound
 
 		std::string SoundPath(const std::string& name)
 		{
-			return ps5ui::AssetPath("sounds/" + name + ".wav");
+			return ps5paths::Assets() + "/ui/sounds/" + name + ".wav";
 		}
 
 		// what the launcher asks of the sound thread

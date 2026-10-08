@@ -89,7 +89,7 @@ else compiles, links and packages, but its output (`build/app-check`) is not an 
 | `port/cemu/` | Cemu's platform classes for the PS5: the memory mapper, fibers, AudioOut, the DualSense controller, and a Microsoft-ABI bridge for the recompiler, since the PS5 target has no `ms_abi` |
 | `port/app/` | Cemu's start-up without wxWidgets, the game list, game icons and box art, graphic packs, controller settings, installs, and what the app shows over a game: both in-game menus, the GamePad's screen and the touchpad's cursor |
 | `port/azahar/` | Azahar's side: the 3DS library (read by the launcher itself), its controls, and its PS5 frontend (built in Azahar's tree): the window on VideoOut, the DualSense as the 3DS, AudioOut, CIA installs |
-| `port/frontend/` | The launchers. The new one (`shell/`, [docs/UI-REDESIGN.md](UI-REDESIGN.md)): the Wii U and 3DS sides of one shell, opening on the side last used, drawn with the UI kit. The classic one, the fallback (L1 held as the app starts): the start screen and each side's screens, ProsperoEden's RmlUi layout drawn in software and shown on VideoOut through SDL, over the Homebrew Launcher's bubbles (`bubbles.cpp`) or the 3DS one's waves (`wave.cpp`) |
+| `port/frontend/` | The launcher (`shell/`, [docs/UI-REDESIGN.md](UI-REDESIGN.md)): the Wii U and 3DS sides of one shell, opening on the side last used, drawn with the UI kit |
 | `port/ui/` | The UI kit the new launcher draws with: Vulkan on the RADV the app links, presenting to VideoOut; signed-distance shapes and text (Lexend baked by `tools/render-sdf-font.sh`), pictures, springs, the DualSense as actions, and the design's tokens |
 | `port/main_ps5.cpp` | The entry point: the sandbox escape, logs, Cemu's core, the launcher, the game |
 | `patches/cemu/`, `patches/azahar/` | The port's changes to Cemu's and Azahar's own files |
@@ -110,29 +110,24 @@ and drawn again:
 
 | Script | What it draws |
 |---|---|
-| `tools/render-layout.py` | The launcher's layouts: the start screen, and each side's tabs (Home, Library, Settings), game pages and dialogs; and its stylesheet, `port/frontend/ui/har.rcss`, in each side's colours, blue and gold. Run by `package.sh` |
-| `tools/render-glyphs.py` | The launcher's glyphs: the DualSense's buttons for its hints, and Settings' category icons, white for the stylesheet to tint. Run by `package.sh` |
-| `tools/render-fonts.py` | Lexend's bitmap atlases for the launcher (`port/frontend/ui/fonts`, committed) |
+| `tools/render-sdf-font.sh` | Lexend's signed-distance atlas for the launcher (`port/ui/fonts/lexend.sdf`, committed) |
+| `tools/render-menu-fonts.py` | Lexend's Regular, Medium and SemiBold for the in-game menus, which ImGui draws (`port/ui/fonts/Lexend-*.ttf`, committed). Needs fontTools |
 | `tools/render-gametdb.py` | GameTDB's game information, as the game pages and in-game menus read it (`port/app/gametdb`, committed) |
-| `tools/render-background.py` | The Wii U Homebrew Launcher's background as a still picture, which the icons, the home screen background and the banner draw on. The launcher draws it moving (`port/frontend/bubbles.cpp`) |
+| `tools/render-background.py` | The Wii U Homebrew Launcher's background as a still picture, which the icons, the home screen background and the banner draw on. The launcher draws it moving (`port/frontend/shell/shell.cpp`) |
 | `tools/render-icons.py` | The launcher's icons: the GamePad on the bubbles, the 3DS on the waves, and the two side by side. Run by `package.sh` |
 | `tools/render-presentation.py` | The PS5 home screen's art: the background (`sce_sys/pic0.dds`, installed as `pic0.dds` and `pic1.dds`, a 3840x2160 BC7 DDS it encodes itself) and the tile (`sce_sys/icon0.png`), both the README banner's design. Needs Pillow, numpy and the banner's fonts; its output is committed, so the build does not |
 | `tools/render-banner.py` | This repository's banner, `docs/banner.svg` |
 
-All but `render-presentation.py` need only Python's standard library.
+All but `render-presentation.py` and `render-menu-fonts.py` need only Python's standard library.
 
 ## The launcher on a PC
 
-`tools/preview-launcher.sh` builds the launcher's own code for the PC, on RmlUi built for the PC,
-with sample games, graphic packs and controllers in place of the emulators, and saves its screens as
-PNGs in `build/preview`. A script (`tools/launcher-preview/screens.txt` by default) presses the
-DualSense's buttons and says when to save a screen, so a change to the layout can be seen without a
-console. It needs `make deps` first, and zlib's headers (`zlib1g-dev`). Box art can be tried by
-putting TGAs in `build/preview/boxart/<wiiu|3ds>/<ID>.tga`.
-
-`tools/preview-shell.sh` does the same for the new launcher, into `build/shell-preview`: its own code
-and the UI kit run as on the console, drawing with the PC's Vulkan (Mesa's lavapipe will do:
-`libvulkan-dev` and `mesa-vulkan-drivers`, with `libfreetype-dev`), in place of the emulators the
-classic preview's samples (`tools/launcher-preview/console.cpp`, which both share). Its scripts are
+`tools/preview-shell.sh` builds the launcher's own code for the PC and saves its screens as PNGs in
+`build/shell-preview`, so a change to the layout can be seen without a console: its own code and the
+UI kit run as on the console, drawing with the PC's Vulkan (Mesa's lavapipe will do: `libvulkan-dev`
+and `mesa-vulkan-drivers`, with `libfreetype-dev`), with sample games, graphic packs and controllers
+in place of the emulators (`tools/launcher-preview/console.cpp`). A script presses the DualSense's
+buttons and says when to save a screen. It needs `make deps` first, and zlib's headers
+(`zlib1g-dev`). Its scripts are
 `tools/launcher-preview/shell-screens.txt` (every screen), `shell-first.txt` (a first start, with
 `PREVIEW_FIRST=1`) and `shell-ask.txt` (the side chooser, with `PREVIEW_ASK=1`).

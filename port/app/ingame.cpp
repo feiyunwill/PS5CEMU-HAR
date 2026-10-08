@@ -59,7 +59,6 @@ namespace
 	Area s_gamePadArea; // where the GamePad's picture is this frame
 	uint32_t s_buttons = 0, s_pressed = 0; // player 1's buttons, and those pressed since the last frame
 	uint32_t s_menuButtons = 0;			   // the same, with the left stick's directions as the D-pad's
-	bool s_confirmLibrary = false;
 	std::string s_gameName;
 	// amiibo dumps in /data/ps5cemu/amiibo, looked for as the menu opens; the one chosen, and what
 	// came of the last scan
@@ -168,8 +167,8 @@ namespace
 		const bool aOnCircle = faceButtons && mappings[0].input == "Circle";
 		using Row = ps5menu::Row;
 		std::vector<Row> rows;
-		rows.push_back({"resume", "Back to the game", "", false, "Closes this menu: the game carries on where it is."});
-		rows.push_back({"screens", "Screens", "", false, "The TV's and the GamePad's pictures, and how they fill the screen.", {
+		rows.push_back({"screens", "Screens", fmt::format("{} \u00b7 {}", gamePadMain ? "GamePad" : "TV", stretch ? "Stretched" : "Its shape"), false,
+			"The TV's and the GamePad's pictures, and how they fill the screen.", {
 			{"main", "Main screen", gamePadMain ? "GamePad" : "TV", true,
 				"Which picture fills the TV: the TV's or the GamePad's. In the game, touchpad click + L1 swaps them."},
 			{"corner", fmt::format("{} in a corner", gamePadMain ? "TV" : "GamePad"), s_cornerScreen ? "On" : "Off", true,
@@ -177,7 +176,8 @@ namespace
 			{"scaling", "Picture", stretch ? "Stretched" : "Its own shape", true,
 				"Its own shape keeps the picture's proportions, with bars where they differ from the screen's; Stretched fills it."},
 		}});
-		rows.push_back({"graphics", "Graphics", "", false, "Upscaling, Cemu's accuracy settings and the performance overlay. Kept for the next games.", {
+		rows.push_back({"graphics", "Graphics", kFilters[filter], false,
+			"Upscaling, Cemu's accuracy settings and the performance overlay. Kept for the next games.", {
 			{"upscaling", "Upscaling to 4K", kFilters[filter], true,
 				"How the picture is scaled to the screen: Bicubic is sharp, Hermite softer, Bilinear softer still."},
 			{"barriers", "Accurate barriers", config.vk_accurate_barriers ? "On" : "Off", true,
@@ -217,7 +217,8 @@ namespace
 			if (packs.empty())
 				packs.push_back({"nopacks", running.version ? "None for this game" : "Reading the packs...", "", false,
 					"The community graphic packs have none for this game."});
-			rows.push_back({"packs", "Graphic packs", "", false,
+			const auto on = std::count_if(running.packs.begin(), running.packs.end(), [](const auto& pack) { return pack.enabled; });
+			rows.push_back({"packs", "Graphic packs", running.packs.empty() ? "None" : fmt::format("{} on", on), false,
 				"The game's community graphic packs: resolution, frame rate and mods, as Cemu's Graphic Packs window has them.", packs});
 		}
 		// the toys-to-life portals: each device's switch, and the figures on the ones plugged in
@@ -244,14 +245,18 @@ namespace
 			const std::string error = ps5usb::LastError();
 			if (!error.empty())
 				usb.push_back({"usberror", error, "", false, "The last figure could not be put on."});
-			rows.push_back({"usb", "USB devices", "", false,
+			const auto plugged = std::count_if(std::begin(ps5usb::kDevices), std::end(ps5usb::kDevices), [](ps5usb::Device device) { return ps5usb::Plugged(device); });
+			rows.push_back({"usb", "USB devices", plugged ? fmt::format("{} on", plugged) : "Off", false,
 				"Skylanders, Disney Infinity and LEGO Dimensions figures on Cemu's emulated portals, as amiibo are scanned.", usb});
 		}
-		rows.push_back({"volume", "Volume", fmt::format("{}%", config.tv_volume), true, "The game's sound. Left and Right change it by 10%."});
+		Row volume{"volume", "Volume", fmt::format("{}%", config.tv_volume), true, "The game's sound. Left and Right change it by 10%."};
+		volume.slider = config.tv_volume / 100.0f;
+		rows.push_back(volume);
 		rows.push_back({"amiibo", "Amiibo", !s_amiiboMessage.empty() ? s_amiiboMessage : s_amiibo.empty() ? "None" : s_amiibo[s_amiiboIndex], true,
 			s_amiibo.empty() ? "Put amiibo dumps (.bin) in /data/ps5cemu/amiibo to scan them here." :
 							   "Left and Right choose an amiibo dump; Cross touches it to the GamePad when the game asks for one."});
-		rows.push_back({"controls", "Controls", "", false, "Each player's controller, motion, vibration, deadzones and A and B.", {
+		rows.push_back({"controls", "Controls", TypeName(ps5emu::GetPlayerControls(0).type), false,
+			"Each player's controller, motion, vibration, deadzones and A and B.", {
 			{"player", "Player", fmt::format("{}{}", player + 1, controls.connected ? "" : " (no DualSense)"), true,
 				"Whose controller the settings below are: Left and Right choose the player."},
 			{"type", "Emulated controller", TypeName(controls.type), true,
@@ -267,11 +272,20 @@ namespace
 			{"layout", "A and B", !faceButtons ? "-" : aOnCircle ? "A on Circle" : "A on Cross", true,
 				"A on Circle as on the Wii U, or on Cross, with X and Y swapped to match. Every button: launcher's Settings > Controls."},
 		}});
-		Row library{"library", "Back to the library", s_confirmLibrary ? "Press Cross again" : "", false,
-			"Leaves the game for the library. What you have not saved in the game is lost."};
+		Row library{"library", "Quit to the library", "", false,
+			"Leaves the game for the library. What you have not saved in the game is lost, so Cross is held."};
 		library.apart = true;
+		library.hold = true;
 		rows.push_back(library);
 		return rows;
+	}
+
+	// The quick actions above the list: back to the game, the TV and GamePad swapped, the graphic
+	// packs, and the amiibo chosen in the list touched to the GamePad
+	std::vector<ps5menu::Tile> Tiles()
+	{
+		return {{"resume", "Resume", "resume"}, {"main", "Screens", "swap", LatteGPUState.isDRCPrimary ? "GamePad main" : "TV main"},
+			{"packs", "Graphic packs", "packs"}, {"amiibo", "Amiibo", "amiibo", s_amiibo.empty() ? "None" : "Scan"}};
 	}
 
 	// What a row chosen or changed does
@@ -283,8 +297,6 @@ namespace
 		const bool chosen = action.chosen;
 		const int player = s_controlsPlayer;
 		const auto controls = ps5emu::GetPlayerControls(player);
-		if (id != "library")
-			s_confirmLibrary = false;
 		if (id == "resume")
 			CloseMenu();
 		else if (id == "main")
@@ -334,11 +346,7 @@ namespace
 			// Cross goes up by 10, and from 100 back to 0
 			SetVolume(chosen && config.tv_volume >= 100 ? 0 : config.tv_volume + change * 10);
 		else if (id == "library")
-		{
-			if (s_confirmLibrary)
-				s_libraryRequested = true;
-			s_confirmLibrary = true;
-		}
+			s_libraryRequested = true; // held to here
 		else if (id.rfind("usb:", 0) == 0)
 		{
 			const auto device = (ps5usb::Device)std::stoi(id.substr(4));
@@ -428,16 +436,16 @@ namespace
 
 	void DrawMenu(float scale)
 	{
-		ImFont* headFont = ImGui_GetFont(32.0f * scale);
-		ImFont* rowFont = ImGui_GetFont(24.0f * scale);
-		ImFont* smallFont = ImGui_GetFont(20.0f * scale);
-		if (!headFont || !rowFont || !smallFont)
+		using ps5menu::Weight;
+		const ps5menu::Fonts fonts{ImGui_GetFontFace((int)Weight::SemiBold, ps5menu::kHeading * scale),
+			ImGui_GetFontFace((int)Weight::Medium, ps5menu::kBody * scale), ImGui_GetFontFace((int)Weight::Regular, ps5menu::kLabel * scale),
+			ImGui_GetFontFace((int)Weight::Regular, ps5menu::kCaption * scale), ImGui_GetFontFace((int)Weight::SemiBold, ps5menu::kChip * scale)};
+		if (!fonts.heading || !fonts.body || !fonts.label || !fonts.caption || !fonts.chip)
 			return; // ready next frame
 		if (s_menuFresh.exchange(false))
 		{
 			// opened: on its first row, every category closed, the shortcut's buttons not counted
 			s_side.Reset();
-			s_confirmLibrary = false;
 			FindAmiibo();
 			ps5emu::RequestGraphicPackList(); // the main thread lists them for the menu
 			ps5usb::Refresh();				  // the figures in their folders
@@ -446,7 +454,8 @@ namespace
 				s_gameName = CafeSystem::GetForegroundTitleName();
 		}
 		bool close = false;
-		const ps5menu::Action action = s_side.Update(MenuRows(), s_menuButtons, sceKernelGetProcessTime(), close);
+		const std::vector<ps5menu::Tile> tiles = Tiles();
+		const ps5menu::Action action = s_side.Update(MenuRows(), tiles, s_menuButtons, sceKernelGetProcessTime(), close);
 		if (close)
 		{
 			CloseMenu();
@@ -454,13 +463,12 @@ namespace
 		}
 		if (!action.id.empty())
 			Act(action);
-		if (s_side.Focus() != "library")
-			s_confirmLibrary = false; // Back to the library asks twice, without moving away between
 		ImGuiIO& io = ImGui::GetIO();
 		const ImVec2 origin{(io.DisplaySize.x - 1920.0f * scale) * 0.5f, (io.DisplaySize.y - 1080.0f * scale) * 0.5f};
 		const Canvas canvas{ImGui::GetForegroundDrawList(), scale, origin, ps5menu::kBlue};
 		ps5menu::Header header;
-		header.kicker = "WII U";
+		header.system = "WII U";
+		header.status = "RUNNING"; // Cemu has no safe pause yet
 		{
 			std::lock_guard lock(s_gameMutex);
 			header.title = s_gameName;
@@ -469,7 +477,7 @@ namespace
 		header.cover = s_cover;
 		header.coverWidth = (float)s_coverWidth;
 		header.coverHeight = (float)s_coverHeight;
-		s_side.Draw(canvas, {headFont, rowFont, smallFont}, header, MenuRows(),
+		s_side.Draw(canvas, fonts, header, MenuRows(), Tiles(),
 			{{"cross", "Choose"}, {"leftright", "Change"}, {"circle", s_side.Open().empty() ? "Back to the game" : "Back"}});
 	}
 }
@@ -478,6 +486,13 @@ namespace ps5ingame
 {
 	void SetGame(const ps5emu::Game& game)
 	{
+		// the menu's typeface, Lexend's three weights, for Cemu's ImGui to make at the menu's sizes
+		for (const ps5menu::Weight weight : {ps5menu::Weight::Regular, ps5menu::Weight::Medium, ps5menu::Weight::SemiBold})
+		{
+			const auto& file = ps5menu::FontFile(weight);
+			if (!file.empty())
+				ImGui_SetFontFace((int)weight, file.data(), (int)file.size(), ps5menu::kGlyphRanges);
+		}
 		ps5gameinfo::Info info;
 		const bool known = ps5gameinfo::Find(ps5boxart::System::WiiU, game.gameId, info);
 		std::string details;

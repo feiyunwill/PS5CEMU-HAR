@@ -287,7 +287,7 @@ namespace ps5shell
 		double m_start = 0, m_now = 0, m_lastFrame = 0;
 		float m_dt = 0;
 		uint64_t m_frames = 0;
-		bool m_failed = false;	 // the device was lost: the classic launcher next time
+		bool m_failed = false;	 // the device was lost
 		bool m_videoOut = false; // VideoOut was taken (a failure from here needs a fresh process)
 
 		std::vector<Game> m_games;

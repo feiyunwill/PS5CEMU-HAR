@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: ps5cemu <ps5cemu@localhost>
+Date: Thu, 8 Oct 2026 04:40:25 +0000
+Subject: [PATCH] PS5: the in-game menu's own typeface in the ImGui font cache
+
+---
+ src/imgui/imgui_extension.cpp | 50 +++++++++++++++++++++++++++++++++--
+ src/imgui/imgui_extension.h   |  6 +++++
+ 2 files changed, 54 insertions(+), 2 deletions(-)
+
+diff --git a/src/imgui/imgui_extension.cpp b/src/imgui/imgui_extension.cpp
+index 1e5917c..f37c464 100644
+--- a/src/imgui/imgui_extension.cpp
++++ b/src/imgui/imgui_extension.cpp
+@@ -53,13 +53,27 @@ extern char const g_fontawesome_data[];
+ #endif
+ std::unordered_map<int, ImFont*> g_imgui_fonts;
+ std::stack<int> g_font_requests;
++#if defined(CEMU_PS5)
++// the port's faces: a font's key is its face times kFaceKey plus its size (face 0: Cemu's own)
++struct PS5FontFace
++{
++	const void* data = nullptr;
++	int size = 0;
++	const ImWchar* ranges = nullptr;
++};
++static PS5FontFace g_ps5_faces[8];
++static constexpr int kFaceKey = 4096;
++#endif
+ 
+ void ImGui_PrecacheFonts()
+ {
+ 	while (!g_font_requests.empty())
+ 	{
+-		const int size = g_font_requests.top();
++		const int key = g_font_requests.top();
+ 		g_font_requests.pop();
++		if (g_imgui_fonts.count(key))
++			continue; // asked for twice before it was made
++		const int size = key % 4096;
+ 		
+ 		auto& io = ImGui::GetIO();
+ 		cemu_assert(io.Fonts->Locked == false);
+@@ -72,6 +86,18 @@ void ImGui_PrecacheFonts()
+ 		//cfg.FontData = g_font_data;
+ 		//cfg.FontDataSize = g_font_size;
+ 		//cfg.SizePixels = size;
++#if defined(CEMU_PS5)
++		const int face = key / kFaceKey;
++		if (face > 0 && face < 8 && g_ps5_faces[face].data)
++		{
++			cfg.OversampleH = 2;
++			g_imgui_fonts[key] = io.Fonts->AddFontFromMemoryTTF((void*)g_ps5_faces[face].data, g_ps5_faces[face].size, (float)size, &cfg,
++				g_ps5_faces[face].ranges);
++			g_renderer->Flush(true);
++			g_renderer->DeleteFontTextures();
++			continue;
++		}
++#endif
+ 		ImFont* font = io.Fonts->AddFontFromMemoryTTF(g_font_data, g_font_size, (float)size, &cfg);
+ 
+ 		ImFontConfig cfgmerge{};
+@@ -100,7 +126,7 @@ void ImGui_PrecacheFonts()
+ 		io.Fonts->AddFontFromMemoryTTF((void*)g_fontawesome_data, (int)g_fontawesome_size, (float)size, &cfgmerge, icon_ranges);
+ #endif
+ 
+-		g_imgui_fonts[(int)size] = font;
++		g_imgui_fonts[key] = font;
+ 
+ 		// Vulkan doesn't let us destroy resources that are still being used, so we flush here
+ 		g_renderer->Flush(true);
+@@ -123,6 +149,26 @@ ImFont* ImGui_GetFont(float size)
+ 	return nullptr; // will create the font in next precache call
+ }
+ 
++#if defined(CEMU_PS5)
++void ImGui_SetFontFace(int face, const void* data, int size, const ImWchar* ranges)
++{
++	if (face > 0 && face < 8)
++		g_ps5_faces[face] = {data, size, ranges};
++}
++
++ImFont* ImGui_GetFontFace(int face, float size)
++{
++	if (face <= 0 || face >= 8 || !g_ps5_faces[face].data)
++		return ImGui_GetFont(size);
++	const int key = face * kFaceKey + std::clamp((int)size, 1, kFaceKey - 1);
++	const auto it = g_imgui_fonts.find(key);
++	if (it != g_imgui_fonts.cend())
++		return it->second;
++	g_font_requests.emplace(key);
++	return nullptr; // made in the next precache call, as ImGui_GetFont's
++}
++#endif
++
+ #if defined(CEMU_PS5)
+ // The console has no mouse or keyboard: PS5Cemu gives ImGui the DualSense instead, as a gamepad,
+ // and its touchpad as the mouse while an overlay takes input (ps5cemu/port/app/ingame.cpp)
+diff --git a/src/imgui/imgui_extension.h b/src/imgui/imgui_extension.h
+index ef2ee34..0100650 100644
+--- a/src/imgui/imgui_extension.h
++++ b/src/imgui/imgui_extension.h
+@@ -14,4 +14,10 @@ bool ImGui_BeginPadDistinct(const char* name, bool* p_open, ImGuiWindowFlags fla
+ void ImGui_PrecacheFonts();
+ void ImGui_ClearFonts();
+ ImFont* ImGui_GetFont(float size);
++#if defined(CEMU_PS5)
++// PS5Cemu's in-game menu draws in its own typeface (port/app/menu_canvas.h): a TrueType font given
++// as face 1 to 7 (the data kept by the caller), then asked for at a size as ImGui_GetFont is
++void ImGui_SetFontFace(int face, const void* data, int size, const ImWchar* ranges);
++ImFont* ImGui_GetFontFace(int face, float size);
++#endif
+ void ImGui_UpdateWindowInformation(bool mainWindow);
+\ No newline at end of file

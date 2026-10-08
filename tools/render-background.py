@@ -7,7 +7,7 @@
 writes ui/background-menu.tga (2048x1152) and ui/background.tga (1920x1080). The home screen
 tile, its background and the README's banner are drawn on it (render-icons.py,
 render-presentation.py and render-banner.py use its particles); the launcher draws it moving,
-its bubbles rising (port/frontend/bubbles.h). It is the Wii U Homebrew Launcher's background, as Dimok's
+its bubbles rising (port/frontend/shell/shell.cpp). It is the Wii U Homebrew Launcher's background, as Dimok's
 homebrew_launcher draws it (src/menu/MainWindow.cpp, with libgui's GuiParticleImage; both
 GPL-3.0-or-later). A blue gradient, (59, 159, 223) at the top to (79, 153, 239) at the bottom,
 and 500 white discs of radius up to 30 and alpha 0.05 to 0.65 on its 1280x720 screen, here
@@ -68,7 +68,7 @@ def render(width, height):
 
 
 def write_tga(path, width, height, pixels):
-    # uncompressed true colour, 32 bits, 8 of alpha, top-down: what the launcher reads (frontend/ui_host.cpp)
+    # uncompressed true colour, 32 bits, 8 of alpha, top-down: what the launcher reads (ui/images.cpp)
     header = struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, width, height, 32, 0x28)
     with open(path, "wb") as out:
         out.write(header + bytes(pixels))

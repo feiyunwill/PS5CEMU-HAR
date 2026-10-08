@@ -6,7 +6,7 @@
 
 The two emulators each have a device and a background: Cemu a Wii U GamePad on the Wii U Homebrew
 Launcher's blue with its bubbles (tools/render-background.py), Azahar a 3DS on the 3DS Homebrew
-Launcher's waves made yellow (as port/frontend/wave.cpp draws them), under the README banner's dark
+Launcher's waves made yellow (as the launcher draws them), under the README banner's dark
 overlay (a lighter one on the yellow). Writes:
 
   sce_sys/icon0.png          512x512, opaque: the two side by side (the console's tile is now
@@ -36,7 +36,7 @@ GOLD = {"top": (0x7c, 0x56, 0x10), "bottom": (0x33, 0x22, 0x06), "accent": (0xff
 OVERLAY = 0.35  # as the banner's
 WAVE_OVERLAY = 0.22  # lighter on the yellow, which darkens to brown
 
-# Azahar's background, as port/frontend/wave.cpp draws it on its 1920x1080 screen
+# Azahar's background, as the launcher draws it on its 1920x1080 screen
 WAVE_TOP, WAVE_BOTTOM = (255, 204, 64), (236, 158, 22)
 WAVES = [  # top, wavelength, amplitude, colour, alpha
     (580, 1280, 36, (255, 228, 140), 0.26),
@@ -264,7 +264,7 @@ def write_png(path, rows):
 
 def write_tga(path, rows):
     height, width = len(rows), len(rows[0])
-    # uncompressed true colour, 32 bits, 8 of alpha, top-down: what the launcher reads (frontend/ui_host.cpp)
+    # uncompressed true colour, 32 bits, 8 of alpha, top-down: what the launcher reads (ui/images.cpp)
     header = struct.pack("<BBBHHBHHHHBB", 0, 0, 2, 0, 0, 0, 0, 0, width, height, 32, 0x28)
     with open(path, "wb") as out:
         out.write(header + b"".join(bytes((p[2], p[1], p[0], p[3])) for row in rows for p in row))

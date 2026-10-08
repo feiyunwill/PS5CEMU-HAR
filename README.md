@@ -172,12 +172,16 @@ software you own, and don't download or share them.
 | Touchpad click + L1 | Swap the screens |
 | Touchpad click + R1 | Next screen layout |
 
-The in-game menu opens on the left with the game's box art and details. Up and Down move, Right or
-Cross opens a category, Left and Right change a setting, and Circle closes a category or goes back to
-the game. Changes are kept for your next games. A 3DS game pauses while its menu is open.
+The in-game menu opens on the left in the launcher's look: the game's cover and badges, four quick
+actions along the top, then the settings, each category showing its current value. Up and Down
+move (past the list's top onto the quick actions), Right or Cross opens a category, Left and Right
+change a setting, and Circle closes a category or goes back to the game. Changes are kept for your
+next games. A 3DS game pauses while its menu is open.
 
-- **Both:** screens, picture, volume, controls, the performance overlay, and **Back to the library**
-  (press Cross twice; unsaved progress is lost).
+- **Quick actions:** Wii U: Resume, Screens (swap TV and GamePad), Graphic packs, Amiibo. 3DS:
+  Resume, Save state, Load state, Screens (next layout).
+- **Both:** screens, picture, volume, controls, the performance overlay, and **Quit to the library**
+  (hold Cross until the ring fills; unsaved progress is lost).
 - **Wii U:** **Amiibo**, and a **Graphics** page with Cemu's **Accurate barriers** (on by default;
   off can be faster, but some games flicker) and **Async shader compile** (on by default; off waits
   for each new shader: stutter, but nothing drawn wrong).
@@ -197,7 +201,7 @@ the game. Changes are kept for your next games. A 3DS game pauses while its menu
   `infinity` or `dimensions`, then in the game open the in-game menu's **USB devices**: Left and Right
   put the next figure on a slot, and **Empty** takes it off. The game saves its progress into the dump,
   as it would on the toy. A real portal plugged into the PS5 isn't supported.
-- **Save states (3DS).** Five slots per game; loading asks twice. Save states are tied to the app
+- **Save states (3DS).** Five slots per game; loading is held (hold Cross until the ring fills). Save states are tied to the app
   version that made them, so keep saving in the game too.
 - **Cheats (3DS).** Put a game's cheats in `/data/ps5cemu/azahar/cheats/<title ID>.txt` (16 hex
   digits, shown in the in-game menu), in the Gateway format desktop Azahar uses, and turn them on and

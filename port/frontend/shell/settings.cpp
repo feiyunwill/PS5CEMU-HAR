@@ -241,10 +241,6 @@ namespace ps5shell
 				"The side last used: PS5CEMU-HAR opens on the side you were on, and after a game on that game.\nAsk each time: it shows the two "
 				"sides first, as the start screen did.",
 				Kind::Segmented);
-			choice("launcher", "Launcher", Options({"New", "Classic"}), m_settings.ui.classic ? 1 : 0, "Classic: the launcher before this one, from the next start.",
-				"The classic launcher is the one PS5CEMU-HAR had before this one, drawn without the GPU. It comes back at the next start.\nHolding L1 as "
-				"PS5CEMU-HAR starts switches to the classic launcher too, and holding R1 comes back to this one.",
-				Kind::Segmented);
 			toggle("pictures", "Game pictures behind menus", m_settings.ui.gamePictures, "The focused game's cover, softened, behind the screens.",
 				"The focused game's picture fills the screen behind the menus, softened and dimmed, so moving the focus changes the whole "
 				"screen. Off: the game's colours only.");
@@ -488,12 +484,6 @@ namespace ps5shell
 		auto& n3ds = m_settings.n3ds;
 		if (id == "starton")
 			m_settings.ui.startOn = index == 1 ? "ask" : "last";
-		else if (id == "launcher")
-		{
-			m_settings.ui.classic = index == 1;
-			if (m_settings.ui.classic)
-				Toast("The classic launcher opens from the next start");
-		}
 		else if (id == "music")
 			m_settings.music = kMusic[std::clamp(index, 0, 1)];
 		else if (id == "holdms")

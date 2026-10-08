@@ -3,9 +3,7 @@
 //
 //  1. out of the sandbox: /data, and JIT memory for the recompilers (ps5/privilege.h);
 //  2. the boot log, the DualSense and Cemu's core (settings, MLC, graphic packs, the game scan);
-//  3. the launcher until a game is chosen: the new one (frontend/shell.h), on the side last used, or
-//     the classic one (frontend/launcher.h, its start screen choosing a side) when L1 was held as the
-//     app started, ps5cemu.json's ui.classic asks for it, or the new one cannot draw;
+//  3. the launcher until a game is chosen (frontend/shell.h), on the side last used;
 //  4. the game, on Cemu's or Azahar's Vulkan renderer, until the in-game menu (touchpad + Options)
 //     asks for the library, which starts PS5CEMU-HAR over (app/emulator.h, RestartToLibrary) on
 //     that emulator's side.
@@ -246,54 +244,20 @@ int main(int argc, char* argv[])
 
 	if (freshStart && privileges.filesystem)
 		ps5update::Start();
-	// the new launcher, unless L1 is held now (or ui.classic says so from an earlier start)
-	bool shell = ps5shell::Wanted(settings);
-	ps5log::Line("[main] the {} launcher", shell ? "new" : "classic");
 	for (;;)
 	{
 		SetHighFrameRate(false); // the launcher at 59.94 Hz
 		ps5display::SetFramePacing(1); // and the 3DS's games every refresh
 		std::optional<ps5launcher::Choice> choice;
-		if (shell)
-		{
-			switch (ps5shell::Run(settings, status, prepare, choice))
-			{
-			case ps5shell::Outcome::Chosen: break;
-			case ps5shell::Outcome::Classic:
-				// nothing of it reached VideoOut: the classic launcher in its place, this time
-				ps5log::Line("[main] the new launcher could not start: the classic one instead");
-				ps5notify::Send("The new launcher could not start, so the classic one is open. The boot log says why.");
-				shell = false;
-				choice = ps5launcher::Run(settings, status, prepare);
-				break;
-			case ps5shell::Outcome::Restart:
-			case ps5shell::Outcome::Failed:
-				// VideoOut was taken: the classic launcher from a fresh process, and from now on (holding
-				// R1 as the app starts brings the new one back)
-				settings = ps5settings::Load(); // the launcher saved what it changed
-				settings.ui.classic = true;
-				if (ps5settings::Save(settings))
-				{
-					ps5log::Line("[main] the new launcher stopped drawing: starting over in the classic one");
-					ps5notify::Send("The new launcher stopped drawing: PS5CEMU-HAR starts again with the classic one. Hold R1 as it starts "
-									"to try the new one again.");
-					ps5emu::RestartToLibrary();
-					return 1;
-				}
-				// without /data a fresh process could not know to open the classic one: no restarting in a loop
-				ps5log::Line("[main] the new launcher stopped drawing, and /data cannot keep the classic one for the next start");
-				ps5notify::Send("The new launcher stopped drawing. Close PS5CEMU-HAR, then hold L1 as it starts for the classic one.");
-				for (;;)
-					sceKernelUsleep(1000000);
-			}
-		}
-		else
-			choice = ps5launcher::Run(settings, status, prepare);
+		const ps5shell::Outcome outcome = ps5shell::Run(settings, status, prepare, choice);
 		ps5update::Stop(); // nothing of the launcher's runs beside a game
 		ps5packs::Stop();
-		if (!choice)
+		if (outcome != ps5shell::Outcome::Chosen || !choice)
 		{
-			// nothing to show it on: wait for the player to close the app from the PS5's menu
+			// the launcher could not draw, and there is nothing else to show: the boot log says why. Wait
+			// for the player to close the app from the PS5's menu
+			ps5log::Line("[main] the launcher could not start or stopped drawing");
+			ps5notify::Send("The launcher could not start. The boot log in /data/ps5cemu/logs says why.");
 			for (;;)
 				sceKernelUsleep(1000000);
 		}
