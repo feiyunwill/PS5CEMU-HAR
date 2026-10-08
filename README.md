@@ -4,7 +4,8 @@
 
 <p align="center">
   <strong>Wii U and Nintendo 3DS emulation in one PlayStation 5 homebrew app</strong><br>
-  Latest release: <a href="https://github.com/premohq/PS5CEMU-HAR/raw/releases/PS5CEMU-HAR-v3.5.0.zip"><strong>3.5.0</strong></a> ·
+  <a href="https://github.com/premohq/PS5CEMU-HAR/raw/releases/PS5CEMU-HAR-v3.5.0.zip"><strong>Download PS5CEMU-HAR 3.5.0</strong></a> (ZIP, 47.0 MB) ·
+  <a href="https://github.com/premohq/PS5CEMU-HAR/releases/tag/v3.5.0">Release notes</a> ·
   <a href="#whats-new-in-350">What's new</a><br>
   <a href="#install">Install</a> · <a href="#wii-u-cemu">Wii U</a> · <a href="#nintendo-3ds-azahar">3DS</a> ·
   <a href="#controls">Controls</a> · <a href="docs/COMPATIBILITY.md">Compatibility</a> ·
