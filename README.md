@@ -4,8 +4,8 @@
 
 <p align="center">
   <strong>Wii U and Nintendo 3DS emulation in one PlayStation 5 homebrew app</strong><br>
-  Latest release: <a href="https://github.com/premohq/PS5CEMU-HAR/raw/releases/PS5CEMU-HAR-v3.0.0.zip"><strong>3.0.0</strong></a> ·
-  <a href="#whats-new-in-300">What's new</a><br>
+  Latest release: <a href="https://github.com/premohq/PS5CEMU-HAR/raw/releases/PS5CEMU-HAR-v3.5.0.zip"><strong>3.5.0</strong></a> ·
+  <a href="#whats-new-in-350">What's new</a><br>
   <a href="#install">Install</a> · <a href="#wii-u-cemu">Wii U</a> · <a href="#nintendo-3ds-azahar">3DS</a> ·
   <a href="#controls">Controls</a> · <a href="docs/COMPATIBILITY.md">Compatibility</a> ·
   <a href="docs/BUILDING.md">Building</a> · <a href="#credits">Credits</a>
@@ -17,8 +17,8 @@ rendering with Vulkan through Mihawk's PS5 port of the RADV driver and played wi
 - [Cemu](https://github.com/cemu-project/Cemu) for Wii U games
 - [Azahar](https://github.com/azahar-emu/azahar) for Nintendo 3DS games
 
-The app opens on a start screen where you pick Wii U (Cemu) or Nintendo 3DS (Azahar). Each has its
-own launcher, game library, settings and in-game menu.
+One launcher holds both: it opens on the Home of the side you used last, Wii U (Cemu) or Nintendo 3DS
+(Azahar), and a touchpad click switches sides. Each side has its own game library and in-game menu.
 
 This is an unofficial project, not affiliated with or endorsed by the Cemu or Azahar teams, Nintendo
 or Sony. All credit for the emulators goes to their developers.
@@ -37,8 +37,8 @@ or Sony. All credit for the emulators goes to their developers.
 > OnionHEN, or just an ELF loader on port 9021**, PS5CEMU-HAR runs. The
 > [firmware and setup guide](docs/HEN-SETUP.md) has the full picture, per firmware and per HEN.
 
-1. Download [PS5CEMU-HAR-v3.0.0.zip](https://github.com/premohq/PS5CEMU-HAR/raw/releases/PS5CEMU-HAR-v3.0.0.zip)
-   ([release notes](https://github.com/premohq/PS5CEMU-HAR/releases/tag/v3.0.0), [all releases](https://github.com/premohq/PS5CEMU-HAR/releases)) and extract it, or
+1. Download [PS5CEMU-HAR-v3.5.0.zip](https://github.com/premohq/PS5CEMU-HAR/raw/releases/PS5CEMU-HAR-v3.5.0.zip)
+   ([release notes](https://github.com/premohq/PS5CEMU-HAR/releases/tag/v3.5.0), [all releases](https://github.com/premohq/PS5CEMU-HAR/releases)) and extract it, or
    [build it yourself](docs/BUILDING.md).
 2. Copy the `PPSA99360` folder to `/data/homebrew/PPSA99360` on your PS5.
 3. Load your HEN and let it jailbreak `PPSA99360`:
@@ -52,45 +52,48 @@ or Sony. All credit for the emulators goes to their developers.
    [firmware and setup guide](docs/HEN-SETUP.md) has the details for every firmware and HEN, and
    **Settings > Diagnostics** shows what the app got.
 4. Add your games (see [Game files](#game-files)).
-5. Start PS5CEMU-HAR from the home screen, pick an emulator and open the Library.
+5. Start PS5CEMU-HAR from the home screen. The first time, the **Setup check** shows what's ready
+   (storage, the recompilers, each side's games and keys, the 3DS's system files, box art) and what
+   to do about anything that isn't.
 
-**Updating:** copy the new `PPSA99360` folder over the old one; everything in `/data/ps5cemu` is
-kept. When a newer release is out, the app says so in a notification as it starts. The PS5 keeps the
-app's name, icon and background from when it was first registered; register it again in your loader
-to see new ones.
+**Updating:** when a newer release is out, the app asks whether to install it, and does it itself
+(**Settings > Online and updates** checks again). By hand: copy the new `PPSA99360` folder over the
+old one. Either way, everything in `/data/ps5cemu` is kept. The PS5 keeps the app's name, icon and
+background from when it was first registered; register it again in your loader to see new ones.
 
-## Start screen and launchers
+## The launcher
 
 | Button | Action |
 |---|---|
-| Left / Right, Cross | Choose Wii U or Nintendo 3DS on the start screen |
-| L1 / R1 | Switch between Home, Library and Settings |
+| L1 / R1 | Home, Library and Settings |
+| Touchpad click | Switch between Wii U and Nintendo 3DS (on Home and Library) |
 | Cross | Play the game, or open what's focused |
-| Square | A game's page |
-| Triangle | A setting's help; a game's graphic packs (Wii U library) |
-| Circle | Back; on Home, back to the start screen |
+| Options | A game's options |
+| Square / Triangle | Sort and search (Library); a setting's help (Settings) |
+| R2 | Jump by letter (Library) |
+| Circle | Back |
 
-You can switch sides without the app restarting. Each emulator's core only starts with one of its
-games, so Cemu and Azahar never run at the same time, and the launcher's background work stops
-before a game starts. After a game, the app opens on the side you played on.
+The app opens on the side a game came back from, or else the side you used last. **Settings >
+Display > Start on: Ask each time** brings back a chooser at start. You can switch sides without the
+app restarting. Each emulator's core only starts with one of its games, so Cemu and Azahar never run
+at the same time, and the launcher's background work stops before a game starts.
 
-Both launchers have:
-
-- **Home:** your last game with its box art, **Play** and **Details**, and your recent games
+- **Home:** your last game with its box art, and your recent games
 - **Library:** every game's box art from [GameTDB](https://www.gametdb.com/) in a grid (its icon
-  until the cover arrives)
+  until the cover arrives), with filters, sorting and search
 - **Game pages:** a game's description, developer, publisher, release date, genre, players and
-  rating from GameTDB, and how it runs from the [compatibility list](docs/COMPATIBILITY.md); L1 and
-  R1 go to the next game
-- **Settings:** categories down the left (video, audio, controls, game files, installs, online,
-  diagnostics and about), a line under each setting saying what it does, and Triangle for more
-- **Music and menu sounds:** two original pieces in the spirit of a Nintendo console's shop and
-  setup screens; **Settings > Audio** picks the piece and its volume, or turns it off
+  rating from GameTDB, and how it runs from the [compatibility list](docs/COMPATIBILITY.md); a Wii U
+  game's graphic packs
+- **Settings:** one list for both sides, the current side's pages first, a line under each setting
+  saying what it does, and Triangle for more. **Setup check**, **Diagnostics** and **About** are at
+  the end.
+- **Music and menu sounds:** an original setup theme; **Settings > Sound** sets its volume or turns
+  it off
 
 ## Wii U (Cemu)
 
 - Cemu's x64 recompiler, at the PS5's 3840x2160 output, with a choice of upscaling filter (Bicubic
-  by default), 120 Hz on displays that support it, and frame pacing (**Settings > Video**, or the
+  by default), 120 Hz on displays that support it, and frame pacing (**Settings > Graphics**, or the
   in-game menu's Graphics) that holds a game to an even 60 fps at 120 Hz or 30 fps at 60 Hz.
 - Plays WUA, WUD/WUX and unpacked games from any folder the PS5 can read.
 - The Cemu community graphic packs, organized by folder like Cemu's Graphic Packs window, with a
@@ -113,23 +116,22 @@ Both launchers have:
 - Screen layouts: a large top screen with the bottom one beside it, the top screen only, side by
   side, or stacked; either screen can take the main spot.
 - **Borders:** Midnight, Waves, Aurora, Shell or PS5CEMU-HAR artwork around the screens in every layout, from
-  **Settings > Borders** or the in-game menu.
+  **Settings > Screens and borders** or the in-game menu.
 - DualSense: A on Circle and B on Cross like a real 3DS (or swapped), circle pad and C-stick on the
   sticks, ZL/ZR on L2/R2, motion from the gyro and accelerometer, and every button remappable in
   **Settings > Controls**. The touchpad is the bottom screen.
 - Save states, cheats and amiibo in the in-game menu, plus custom textures and mods.
-- System region and language in **Settings > System**.
+- System region and language in **Settings > System and Home Menu**.
 - Install CIA files (games, updates and DLC) from **Settings > Install CIA files**.
 - **Artic Base:** play a game straight from your own 3DS over the network. Start Artic Base on the
-  3DS, choose **Artic Base** on the 3DS home screen (or press Triangle) and enter the address the
-  3DS shows. The same page runs the Artic Setup Tool, which copies your 3DS's system files.
+  3DS, open **Settings > Artic Base** and enter the address the 3DS shows. The same page runs the Artic Setup Tool, which copies your 3DS's system files.
 - An on-screen keyboard for games that ask for text.
 
 ## Game files
 
 ### Wii U
 
-Put games in `/data/ps5cemu/games`, or pick another folder in **Settings > Game files**.
+Put games in `/data/ps5cemu/games`, or pick another folder in **Settings > Games and folders**.
 
 ```text
 <game folder>/
@@ -145,7 +147,7 @@ Encrypted WUD and WUX dumps also need their disc keys in `/data/ps5cemu/keys.txt
 
 ### Nintendo 3DS
 
-Put games in `/data/ps5cemu/azahar/games`, or pick another folder on the 3DS side.
+Put games in `/data/ps5cemu/azahar/games`, or pick another folder in **Settings > Games and folders**.
 
 - `.3ds`, `.cci`, `.cxi` and `.app` dumps, `.3dsx` and `.elf` homebrew, and Azahar's compressed
   formats (`.z3ds`, `.zcci`, `.zcxi`, `.z3dsx`) play directly.
@@ -201,12 +203,12 @@ next games. A 3DS game pauses while its menu is open.
   `infinity` or `dimensions`, then in the game open the in-game menu's **USB devices**: Left and Right
   put the next figure on a slot, and **Empty** takes it off. The game saves its progress into the dump,
   as it would on the toy. A real portal plugged into the PS5 isn't supported.
-- **Save states (3DS).** Five slots per game; loading is held (hold Cross until the ring fills). Save states are tied to the app
-  version that made them, so keep saving in the game too.
+- **Save states (3DS).** Five slots per game; loading is held (hold Cross until the ring fills).
+  States made by earlier PS5CEMU-HAR builds load too. Keep saving in the game as well.
 - **Cheats (3DS).** Put a game's cheats in `/data/ps5cemu/azahar/cheats/<title ID>.txt` (16 hex
   digits, shown in the in-game menu), in the Gateway format desktop Azahar uses, and turn them on and
   off from the menu.
-- **Custom textures (3DS).** Turn on **Settings > Video > Custom textures** and put a pack in
+- **Custom textures (3DS).** Turn on **Settings > Graphics > Custom textures** (3DS) and put a pack in
   `/data/ps5cemu/azahar/load/textures/<title ID>/`.
 - **Mods (3DS).** LayeredFS mods go in `/data/ps5cemu/azahar/load/mods/<title ID>/`, with `romfs/` and
   `exefs/` inside.
@@ -282,6 +284,40 @@ It asks for your firmware, HEN, app version and logs, which almost every problem
 The boot log also gets a `[memory]` line once a minute, a `[perf]` (Wii U) or `[perf3ds]` (3DS) line
 every 10 seconds with the frame rate, and `[crash]` lines if an emulator crashes.
 
+## What's new in 3.5.0
+
+- **One launcher for both sides.** It opens on the Home of the side you used last, a touchpad click
+  switches between Wii U and 3DS, and Settings holds both sides' pages. The Library has filters,
+  sorting, search and jump by letter, and each game has a page with its details and graphic packs.
+  There's no start screen to pick a side any more (**Settings > Display > Start on** brings back a
+  chooser if you want one).
+- **Setup check:** on the first start and in Settings, what's ready (storage, the recompilers, each
+  side's games and keys, the 3DS's system files, box art), what to do about the rest, and a QR code
+  to the guide.
+- **New in-game menus** in the launcher's look: the game's cover, four quick actions (Wii U: Resume,
+  Screens, Graphic packs, Amiibo; 3DS: Resume, Save state, Load state, Screens), each category's
+  current value, a volume slider. Quitting and loading a state are held to confirm.
+- **3DS save states from earlier builds load.** Every state made by an earlier PS5CEMU-HAR build
+  used to say "Made by another version"; now they load. Loading a state also no longer crashes the
+  app now and then.
+- **A newer graphics driver:** 120 Hz output that reaches the games, and frame pacing that holds a
+  Wii U game to an even 60 fps at 120 Hz or 30 fps at 60 Hz (**Settings > Graphics**).
+- **The release ZIP installs as it is.** Every file in it can run, so a file manager that keeps the
+  ZIP's permissions no longer installs an app the PS5 refuses with CE-107750-0
+  ([#22](https://github.com/premohq/PS5CEMU-HAR/issues/22)).
+- **Install it on EXT 1 or USB:** the app finds its files wherever ShadowMountPlus mounts it from,
+  and updates and the restart after each game use that copy
+  ([#22](https://github.com/premohq/PS5CEMU-HAR/issues/22),
+  [#26](https://github.com/premohq/PS5CEMU-HAR/issues/26)).
+- **3DS games with a cheat file start** instead of closing the app
+  ([#20](https://github.com/premohq/PS5CEMU-HAR/issues/20)).
+- **Graphic packs that replace game files** no longer close the app as the game starts
+  ([#24](https://github.com/premohq/PS5CEMU-HAR/issues/24)).
+- **Pokémon X and Y's moving black dots:** a switch to try, `"invariantPosition": true` in the
+  `n3ds` section of `/data/ps5cemu/ps5cemu.json`
+  ([#23](https://github.com/premohq/PS5CEMU-HAR/issues/23)).
+- **A firmware and setup guide** for any PS5 that runs homebrew ([docs/HEN-SETUP.md](docs/HEN-SETUP.md)).
+
 ## What's new in 3.0.0
 
 - **Updates from inside the app.** When a newer release is out, the app offers to download and install
@@ -311,26 +347,15 @@ every 10 seconds with the frame rate, and `[crash]` lines if an emulator crashes
 - **New home screen art and icon** on the PS5, in the banner's design.
 - **The launcher draws its rounded panels itself,** so they show without seams on the console.
 
-## What's new in 2.0.0 D
-
-- **Breath of the Wild's runes fixed.** Magnesis, the other runes and the Sheikah scope no longer
-  freeze the game: Cemu is now past upstream's fix for shaders with loops
-  ([#10](https://github.com/premohq/PS5CEMU-HAR/issues/10)).
-- **Batman: Arkham Origins plays**, with its 60 FPS graphic pack turned off
-  ([#15](https://github.com/premohq/PS5CEMU-HAR/issues/15)).
-- **3DS borders:** Midnight, Waves, Aurora and Shell, around the screens in every layout.
-- **3DS save states, cheats and amiibo**, and **Wii U amiibo**, in the in-game menus.
-- **More settings:** Async shader compile (Wii U), Custom textures and Language (3DS).
-- **No restart when switching** from the Wii U side to the 3DS side.
-- **Update notice** when a newer release is out.
-- **Any HEN:** the [HEN setup guide](docs/HEN-SETUP.md) for etaHEN, OnionHEN and others
-  ([#12](https://github.com/premohq/PS5CEMU-HAR/issues/12)).
-- **Logs from the last five sessions** are kept.
-- The version shows on the start screen and in both launchers.
-
 <details>
 <summary><strong>Older releases</strong></summary>
 
+- **2.0.0 D:** Breath of the Wild's runes no longer freeze the game
+  ([#10](https://github.com/premohq/PS5CEMU-HAR/issues/10)); Batman: Arkham Origins plays with its
+  60 FPS pack off ([#15](https://github.com/premohq/PS5CEMU-HAR/issues/15)); 3DS borders; 3DS save
+  states, cheats and amiibo and Wii U amiibo in the in-game menus; no restart when switching sides;
+  an update notice; the HEN setup guide ([#12](https://github.com/premohq/PS5CEMU-HAR/issues/12));
+  logs from the last five sessions.
 - **2.0.0 C:** a new launcher look with music and menu sounds; Cemu's recompiler without etaHEN's
   JIT; USB and extended drives opened with the bundled helper; one emulator at a time; a 3DS
   on-screen keyboard, region setting and speed limit; Wii U Graphics settings; Diagnostics with logs
